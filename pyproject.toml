@@ -1,0 +1,14 @@
+[project]
+name = "satellite"
+version = "0.1.0"
+description = "Process satellite images using DF & AI"
+readme = "README.md"
+authors = [
+    { name = "Erdinc Kaya", email = "erdincka@msn.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "streamlit>=1.45.0",
+    "watchdog>=6.0.0",
+]
