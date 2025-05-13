@@ -1,24 +1,28 @@
 # Satellite image processing using Data Fabric & AI
 
-# Installation
+## Installation
 
-# Clone the repository
+### Clone the repository
 git clone https://github.com/erdincka/satellite.git
 
-# Navigate to the project directory
+### Navigate to the project directory
 cd satellite
 
-# Create venv
+### Create venv
 python3 -m venv .venv
 
-# Activate virtual environment
+### Activate virtual environment
 source .venv/bin/activate
 
-# Install dependencies
+### Install dependencies
 pip install -r requirements.txt
 
-# Extract images if using offline files
+### Extract images if using offline files
 mkdir -p images; tar -xf ./downloaded_images.tar images/
 
-# Run the application
+### Run the application
 streamlit run main.py
+
+## TODO
+
+A lot
