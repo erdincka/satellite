@@ -11,3 +11,6 @@ wheels/
 
 images/
 nasa.json
+
+# app artifacts
+*.db

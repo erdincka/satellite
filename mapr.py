@@ -1,20 +1,14 @@
-import streamlit as st
+import os
 import httpx
+import logging
+import iceberger
+import pandas as pd
+import shutil
+from streams import produce
+import settings
 
 
-REST_URL = f"https://{st.session_state.get('maprhost')}:8443/rest"
-STREAM = "satellite"
-TOPIC = "broadcast"
-
-user = st.session_state.get('mapruser', 'mapr')
-password = st.session_state.get('maprpass', 'mapr')
-
-def get_credentials():
-    st.write("Data Fabric")
-    st.text_input("Host", placeholder="Hostname/IP", key="maprhost")
-    st.text_input("User", placeholder="mapr", key="mapruser")
-    st.text_input("Password", placeholder="mapr", type="password", key="maprpass")
-    st.button("Connect", on_click=connect_and_configure)
+logger = logging.getLogger(__name__)
 
 
 def connect_and_configure():
@@ -24,27 +18,49 @@ def connect_and_configure():
 
     try:
         # Create stream
-        s = httpx.post(f"{REST_URL}/stream/create?path={STREAM}&ttl=3600", auth=(user, password), verify=False)
+        s = httpx.post(f"{settings.REST_URL}/stream/create?path={settings.HQ_STREAM}&ttl=3600", auth=(settings.MAPR_USER, settings.MAPR_PASSWORD), verify=False)
 
         if s.status_code == 200:
-            st.info(s.json())
+            logger.info("Stream created: %s", s.json())
         else:
-            st.error(s.text)
+            logger.error("Failed to create stream: %s", s.text)
 
     except Exception as error:
-        st.error(error)
+        logger.error(error)
 
-    # if r.status_code == 200:
-    #     st.sidebar.write("Connected")
-    #     st.sidebar.code(r.json())
-    # else:
-    #     st.sidebar.error("Connection failed")
 
 def broadcast(items: list):
+    logger.info("Publishing %d messages to %s:%s", len(items), settings.HQ_STREAM, settings.BROADCAST_TOPIC)
     for item in items:
-        s = httpx.post(f"{REST_URL}/stream/create?path={STREAM}&ttl=3600", auth=(user, password), verify=False)
-
-        if s.status_code == 200:
-            st.info(s.json())
+        if produce(stream=settings.HQ_STREAM, topic=settings.BROADCAST_TOPIC, message=item):
+            yield True, item
         else:
-            st.error(s.text)
+            yield False, item
+
+
+def save_from_url(url: str, isLive: bool):
+    filename = url.split("/")[-1]
+    if isLive:
+        logger.info("Downloading %s as %s", url, filename)
+        try:
+            r = httpx.get(url)
+            if r.status_code == 200:
+                # BytesIO(r.content)
+                with open(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}", "wb") as f:
+                    s = f.write(r.content)
+                    logger.debug("Saved %s: %d bytes", filename, s)
+                return filename
+            else:
+                logger.error("Failed to download %s", url)
+                return None
+        except Exception as error:
+            logger.error(error)
+            return None
+    else:
+        logger.info("Copy %s", filename)
+        try:
+            shutil.copy(f"images/{filename}", f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}")
+            return filename
+        except Exception as error:
+            logger.error(error)
+            return None
