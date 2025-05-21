@@ -1,4 +1,3 @@
-import os
 import socket
 
 isDebugging = True  # Set this to False in production
@@ -32,8 +31,10 @@ HQ_ASSETS = f"{HQ_VOLUME}/assets"
 EDGE_VOLUME = "/apps/satellite/edge"
 EDGE_STREAM = f"{EDGE_VOLUME}/edge_stream"
 EDGE_ASSETS = f"{EDGE_VOLUME}/assets"
+EDGE_MIRROR_NAME = "edge_assets"
+EDGE_REPLICATED_VOLUME = f"{HQ_VOLUME}/edge_replicated"
 
-BROADCAST_TOPIC = "broadcast"
+PIPELINE = "pipeline"
 ASSET_TOPIC = "assets"
 REQUEST_TOPIC = "requests"
 

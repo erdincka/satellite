@@ -1,10 +1,6 @@
-import os
 import httpx
 import logging
-import iceberger
-import pandas as pd
 import shutil
-from streams import produce
 import settings
 
 
@@ -27,15 +23,6 @@ def connect_and_configure():
 
     except Exception as error:
         logger.error(error)
-
-
-def broadcast(items: list):
-    logger.info("Publishing %d messages to %s:%s", len(items), settings.HQ_STREAM, settings.BROADCAST_TOPIC)
-    for item in items:
-        if produce(stream=settings.HQ_STREAM, topic=settings.BROADCAST_TOPIC, message=item):
-            yield True, item
-        else:
-            yield False, item
 
 
 def save_from_url(url: str, isLive: bool):

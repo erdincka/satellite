@@ -32,7 +32,7 @@ def produce(stream: str, topic: str, message: str):
 def consume(stream: str, topic: str):
 
     logger.debug("Consuming from stream: %:%s", stream, topic)
-    MAX_POLL_TIME = 10
+    MAX_POLL_TIME = 3
 
     consumer = Consumer(
         {"group.id": CONSUMER_GROUP, "default.topic.config": {"auto.offset.reset": "earliest"}}

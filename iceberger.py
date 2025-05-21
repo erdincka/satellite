@@ -3,15 +3,17 @@ import logging
 import pandas as pd
 import pyarrow as pa
 from pyiceberg.expressions import EqualTo
-
-import settings
+from pyiceberg.exceptions import TableAlreadyExistsError
 
 logger = logging.getLogger(__name__)
+
+logging.getLogger("pyiceberg").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.ERROR)
 
 catalog = None
 
 
-def get_catalog():
+def get_catalog(warehouse_path: str):
     """Return the catalog, create if not exists"""
 
     global catalog
@@ -22,11 +24,12 @@ def get_catalog():
     try:
         from pyiceberg.catalog.sql import SqlCatalog
 
+        logger.info("Creating catalog: %s", f"sqlite://{warehouse_path}/iceberg.db")
         catalog = SqlCatalog(
             "default",
             **{
                 # creating catalog in working directory
-                "uri": f"sqlite:///iceberg.db",
+                "uri": f"sqlite:///{warehouse_path}/iceberg.db",
                 "py-io-impl": "pyiceberg.io.pyarrow.PyArrowFileIO",
             },
         )
@@ -39,7 +42,7 @@ def get_catalog():
         return catalog
 
 
-def write(tier: str, tablename: str, records: list) -> bool:
+def write(warehouse_path: str, namespace: str, tablename: str, records: list) -> bool:
     """
     Write rows into iceberg table
 
@@ -50,64 +53,45 @@ def write(tier: str, tablename: str, records: list) -> bool:
     :return bool: Success or failure
     """
 
-    warehouse_path = f"{tier}/{tablename}"
-
-    catalog = get_catalog()
+    catalog = get_catalog(warehouse_path)
 
     if catalog is not None:
-        # create namespace if missing
-        if (tier,) not in catalog.list_namespaces():
-            catalog.create_namespace(tier)
+        # Create namespace if missing
+        if (namespace,) not in catalog.list_namespaces():
+            catalog.create_namespace(namespace)
 
-        # logger.info(catalog.list_namespaces())
-
-        table = None
-
-        # tbl = pa.Table.from_pylist(records)
         tbl = pa.Table.from_pandas(pd.DataFrame.from_records(records))
 
-        # Create table if missing
         try:
-            logger.info("Creating table %s.%s", tier, tablename)
-            table = catalog.create_table(
-                f"{tier}.{tablename}",
+            # Create table if missing
+            t = catalog.create_table(
+                f"{namespace}.{tablename}",
                 schema=tbl.schema,
                 location=warehouse_path,
             )
-
         except Exception as error:
-            logger.error(error)
-            # if error is for table already exists
-            logger.info("Table exists, appending to: " + tablename)
-            table = catalog.load_table(f"{tier}.{tablename}")
-
-        existing = table.scan().to_pandas()
-
-        incoming = pd.DataFrame.from_dict(records) # pyright: ignore[reportArgumentType]
-
-        if existing.empty:
-            merged = incoming
-        else:
-            merged = pd.concat([existing, incoming]).drop_duplicates(keep="last")
-
-        logger.info(f"Appending {incoming.shape[0]} records to {tablename}")
+            if not isinstance(error, TableAlreadyExistsError): logger.error(error)
+            try:
+                t = catalog.load_table(f"{namespace}.{tablename}")
+            except Exception as error:
+                logger.error(error)
+                return False
+        # Append data to the table
         try:
-            table.append(pa.Table.from_pandas(merged, preserve_index=False))
-
+            t.append(tbl)
+            logger.info(f"Appending {len(records)} records to {tablename}")
+            return True
         except Exception as error:
             logger.warning(error)
             return False
 
-        return True
-
-    # catalog not found
+    # Catalog not found
     return False
 
 
-def tail(tier: str, tablename: str):
+def tail(warehouse_path: str, tier: str, tablename: str):
     """Return all records from tablename"""
-
-    catalog = get_catalog()
+    catalog = get_catalog(warehouse_path)
 
     if catalog is not None:
 
@@ -118,19 +102,17 @@ def tail(tier: str, tablename: str):
         df = table.scan().to_pandas()
 
         # logger.debug(df)
-
         return df
 
 
-def history(tier: str, tablename: str):
+def history(warehouse_path: str, tier: str, tablename: str):
     """Return list of snapshot history from tablename"""
 
     # warehouse_path = f"{MOUNT_PATH}/{get_cluster_name()}{DEMO['basedir']}/{tier}/{tablename}"
 
-    catalog = get_catalog()
+    catalog = get_catalog(warehouse_path)
 
     if catalog is not None:
-
         logger.info("Loading table: %s.%s", tier, tablename)
 
         table = catalog.load_table(f"{tier}.{tablename}")
@@ -148,7 +130,7 @@ def history(tier: str, tablename: str):
         ]
 
 
-def find_all(tier: str, tablename: str):
+def find_all(warehouse_path:str, tier: str, tablename: str):
     """
     Return pandas dataframe of all records
 
@@ -159,7 +141,7 @@ def find_all(tier: str, tablename: str):
     :returns DataFrame: all records, or None
     """
 
-    catalog = get_catalog()
+    catalog = get_catalog(warehouse_path)
 
     if catalog is not None:
         try:
@@ -172,7 +154,7 @@ def find_all(tier: str, tablename: str):
             return None
 
 
-def find_by_field(tier: str, tablename: str, field: str, value: str):
+def find_by_field(warehouse_path: str, tier: str, tablename: str, field: str, value: str):
     """
     Find record(s) matching the field as arrow dataset
 
@@ -187,7 +169,7 @@ def find_by_field(tier: str, tablename: str, field: str, value: str):
     :return found `rows` or None
     """
 
-    catalog = get_catalog()
+    catalog = get_catalog(warehouse_path)
 
     if catalog is not None:
         try:
