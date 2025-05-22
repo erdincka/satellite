@@ -83,15 +83,16 @@ sudo chown $(id -un):$(id -gn) -R /mapr/${CLUSTER_NAME}/apps/satellite/
 
 A lot
 
+- Point to remote (PCAI) LLM
+
 
 ## RESET
 
 ```bash
 maprcli stream delete -path /apps/satellite/edge/edge_stream
-maprcli stream delete -path /apps/satellite/hq_stream 
+maprcli stream delete -path /apps/satellite/hq_stream
 maprcli volume remove -name edge_replicated -force true
 maprcli volume remove -name edge_assets -force true
 maprcli volume remove -name edge -force true
 maprcli volume remove -name hq_assets -force true
 ```
-

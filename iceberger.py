@@ -24,7 +24,7 @@ def get_catalog(warehouse_path: str):
     try:
         from pyiceberg.catalog.sql import SqlCatalog
 
-        logger.info("Creating catalog: %s", f"sqlite://{warehouse_path}/iceberg.db")
+        logger.debug("Creating catalog: %s", f"sqlite://{warehouse_path}/iceberg.db")
         catalog = SqlCatalog(
             "default",
             **{
@@ -33,7 +33,7 @@ def get_catalog(warehouse_path: str):
                 "py-io-impl": "pyiceberg.io.pyarrow.PyArrowFileIO",
             },
         )
-        logger.info("Got new catalog for Iceberg")
+        logger.debug("Got new catalog for Iceberg")
 
     except Exception as error:
         logger.error("Iceberg Catalog error: %s", error)
@@ -79,7 +79,7 @@ def write(warehouse_path: str, namespace: str, tablename: str, records: list) ->
         # Append data to the table
         try:
             t.append(tbl)
-            logger.info(f"Appending {len(records)} records to {tablename}")
+            logger.debug(f"Appending {len(records)} records to {tablename}")
             return True
         except Exception as error:
             logger.warning(error)

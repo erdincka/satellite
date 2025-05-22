@@ -44,7 +44,7 @@ def save_from_url(url: str, isLive: bool):
             logger.error(error)
             return None
     else:
-        logger.info("Copy %s", filename)
+        logger.debug("Copy %s", filename)
         try:
             shutil.copy(f"images/{filename}", f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}")
             return filename

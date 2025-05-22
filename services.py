@@ -40,7 +40,7 @@ def pipeline_to_broadcast():
         if filename:
             st.session_state["download_success"].append(item)
             # Run AI narration on the image
-            item["analysis"] = utils.analyze_image(filename)
+            item["analysis"] = utils.describe_image(filename)
             # Update the table with the analysis
             if iceberger.write(warehouse_path=f"{settings.MAPR_MOUNT}{settings.HQ_VOLUME}", namespace="hq", tablename="asset_table", records=[item]):
                 if streams.produce(stream=settings.HQ_STREAM, topic=settings.ASSET_TOPIC, message=json.dumps(item)):
@@ -59,24 +59,22 @@ def pipeline_to_broadcast():
     logger.info("HQ FEED: %d success, %d fail", len(st.session_state["broadcast_success"]), len(st.session_state["pipeline_fail"]) + len(st.session_state["broadcast_fail"]))
 
 
-# @st.fragment(run_every=st.session_state.get('refresh', None))
+# @st.fragment(run_every=5)
 def request_listener():
-    with st.spinner("Listening for requests...", show_time=True):
-        for msg in streams.consume(settings.HQ_STREAM, settings.REQUEST_TOPIC):
-            request = json.loads(msg)
+    for msg in streams.consume(settings.HQ_STREAM, settings.REQUEST_TOPIC):
+        request = json.loads(msg)
+        # process only pending requests
+        if "status" in request and request["status"] == "requested":
             logger.info("Received request: %s", request["title"])
             st.session_state["request_success"].append(request)
-            # process only pending requests
-            if "status" in request and request["status"] == "requested":
-                if utils.process_request(request):
-                    st.session_state["response_success"].append(request)
-                    yield request
-                else:
-                    st.error(f"Failed to process request for {request['title']}")
-                    st.session_state["response_fail"].append(request)
-            else: 
-                logger.info("Request not in pending state, skipping")
-
+            if utils.process_request(request):
+                st.session_state["response_success"].append(request)
+                yield request
+            else:
+                st.error(f"Failed to process request for {request['title']}")
+                st.session_state["response_fail"].append(request)
+        else:
+            logger.info("Ignoring request: %s with status: %s", request["title"], request["status"])
 
 # EDGE SERVICES
 
@@ -101,7 +99,10 @@ def asset_request():
     logger.debug(f"Requesting assets: {st.session_state['selected_assets']['selection']['rows']}")
     for idx in st.session_state["selected_assets"]["selection"]["rows"]:
         asset = st.session_state["asset_broadcast"][idx]
-        logger.debug(asset)
+        # Skip assets that are already requested
+        if "status" in asset and asset["status"] in ["fulfilled", "requested"]: continue
+
+        logger.debug("Found asset to request: %s", asset["title"])
         # Mark asset for retrieval
         asset["status"] = "requested"
 
@@ -120,9 +121,10 @@ def response_listener():
         asset = json.loads(message)
         if asset["status"] == "fulfilled":
             logger.debug("Fulfilled: %s", asset)
-            st.success(f"Asset request completed for {asset['title']}")
+            # Mark complete
+            asset["status"] = "completed"
             st.session_state["response_success"].append(asset)
             yield asset
         else:
-            logger.info("ignoring message with status: %s", asset["status"])
+            logger.info("ignoring %s with status: %s", asset["title"], asset["status"])
             logger.debug("Ignoring message: %s", asset)
