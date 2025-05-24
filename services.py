@@ -19,7 +19,7 @@ def publish_to_pipeline(count: int = 5):
         assets = st.session_state.get("data", pd.DataFrame()).to_json(orient='records', lines=True).splitlines() # pyright: ignore[reportOptionalMemberAccess]
         logger.debug(f"Assets: {assets}")
         for item in random.sample(assets, min(len(assets), count)):
-            # FIX: this shouldnt happen
+            # FIX: this shouldn't happen
             if not item: return
             if streams.produce(stream=settings.HQ_STREAM, topic=settings.PIPELINE, message=item):
                 i = json.loads(item)

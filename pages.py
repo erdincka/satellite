@@ -1,37 +1,13 @@
 import logging
 import os
 from random import random
-import textwrap
 from typing import Callable
 import streamlit as st
-import pandas as pd
 import services
 import settings
 import utils
 
 logger = logging.getLogger(__name__)
-
-def build_sidebar():
-    cols = st.sidebar.columns(2)
-    cols[0].link_button(
-        "DFUI",
-        f"https://{settings.MAPR_USER}:{settings.MAPR_PASSWORD}@{settings.MY_HOSTNAME}:8443/app/dfui",
-        type="tertiary",
-        icon=":material/home:",
-    )
-    cols[1].link_button(
-        "MCS",
-        f"https://{settings.MAPR_USER}:{settings.MAPR_PASSWORD}@{settings.MY_HOSTNAME}:8443/app/mcs",
-        type="tertiary",
-        icon=":material/settings:",
-    )
-
-    # Debug info
-    st.sidebar.write(f"Cluster: {settings.MAPR_CLUSTER}")
-    # st.sidebar.json(st.session_state)
-    for key in st.session_state:
-        value = st.session_state[key] if isinstance(st.session_state[key], bool) else len(st.session_state[key]) if isinstance(st.session_state[key], list) else len(st.session_state[key].index) if isinstance(st.session_state[key], pd.DataFrame) else st.session_state[key]
-        st.sidebar.write(f"{key}: {value}")
 
 
 @st.dialog("Asset Viewer", width='large')
@@ -50,22 +26,38 @@ def asset_viewer(asset: dict):
 
 
 @st.fragment
-def tiles(generator: Callable, source: str, wait_message: str = "Loading tiles...", limit: int = 5, columns: int = 5, withImages: bool=False):
+def image_tiles(generator: Callable, source: str, wait_message: str = "Loading tiles...", limit: int = 5, columns: int = 5):
     index = 0
     with st.spinner(wait_message, show_time=True):
         grid = st.columns(columns)
         for item in generator() if limit == 0 else generator()[:-limit]:
-            with grid[index%len(grid)].container(height=380, border=False):
+            with grid[index%len(grid)].container(border=True):
                 # st.subheader(source, divider=True, anchor=False)
                 st.button(label=source.upper(), on_click=asset_viewer, args=(item,), key=f"{source}_{index}", type='tertiary')
                 "---"
-                if withImages:
-                    st.image(item['preview'] if 'preview' in item else [], caption=item['title'], width=180)
-                else:
-                    st.text(item['title'][:20], help=item['title'])
+                st.image(item['preview'] if 'preview' in item else [], caption=item['title'], width=180)
                 st.text(f"Category: {item['analysis']}")
                 st.text(f"Description: {item['description'][:20]}{'...' if len(item['description']) > 20 else ''}", help=item['description'])
-                st.text(f"Keywords: {item.get('keywords', '')[:20]}{'...' if len(item['description']) > 20 else ''}", help=item.get('keywords', None))
+                st.text(f"Keywords: {item.get('keywords', '')[:20]}{'...' if len(item['keywords']) > 20 else ''}", help=item.get('keywords', None))
+                if "object" in item:
+                    st.text(f"Detected: {item['object']}")
+                # st.button(label="", icon=":material/open_in_new:", on_click=asset_viewer, args=(item,), key=f"{source}_{index}")
+                index += 1
+
+@st.fragment
+def message_tiles(generator: Callable, source: str, wait_message: str = "Loading tiles...", limit: int = 5, columns: int = 5):
+    index = 0
+    with st.spinner(wait_message, show_time=True):
+        grid = st.columns(columns)
+        for item in generator() if limit == 0 else generator()[:-limit]:
+            with grid[index%len(grid)].container(border=True):
+                # st.subheader(source, divider=True, anchor=False)
+                st.button(label=source.upper(), on_click=asset_viewer, args=(item,), key=f"{source}_{index}", type='tertiary')
+                "---"
+                st.text(item['title'][:20], help=item['title'])
+                st.text(f"Category: {item['analysis']}")
+                st.text(f"Description: {item['description'][:20]}{'...' if len(item['description']) > 20 else ''}", help=item['description'])
+                st.text(f"Keywords: {item.get('keywords', '')[:20]}{'...' if len(item['keywords']) > 20 else ''}", help=item.get('keywords', None))
                 if "object" in item:
                     st.text(f"Detected: {item['object']}")
                 # st.button(label="", icon=":material/open_in_new:", on_click=asset_viewer, args=(item,), key=f"{source}_{index}")
@@ -81,39 +73,29 @@ def hq_diagram():
 def hq_actionbar():
     # Connectivity status
     utils.stream_replication_status(settings.HQ_STREAM)
-    # utils.volume_mirror_status()
-    row = st.columns(4)
-    row[0].toggle("Live Feed", key="isLive", help="Toggle live data fetching from NASA")
-    # row[1].write(f"Volume Mirror: {':white_check_mark' if st.session_state.get('volume_mirror', False) else ':exclamation:'}")
-    # row[2].toggle("Stream replication", key="stream_replication", help="Enable or disable stream replication", on_change=utils.toggle_stream_replication, args=(True,))
-    row[2].write(f"Stream Replication: {':white_check_mark:'if st.session_state.get('stream_replication', False) else ':exclamation:'}")
-    row[3].write(f"Mount Status: {':white_check_mark:' if os.path.exists(settings.MAPR_MOUNT) else ':exclamation:'}")
+    st.toggle("Live", key="isLive", help="Toggle live data fetching from NASA")
+    st.write(f"Online: {':white_check_mark:'if st.session_state.get('stream_replication', False) else ':exclamation:'}")
+    st.write(f"Mounted: {':white_check_mark:' if os.path.exists(settings.MAPR_MOUNT) else ':exclamation:'}")
 
-    if st.session_state["isLive"]:
-        search_terms = ["missile", "earthquake", "tsunami", "oil", "flood", "iraq", "syria"]
-        query = st.segmented_control(label="Assets", options=search_terms)
-        st.session_state["data"] = utils.nasa_feed(isLive=True, query=query) # pyright: ignore
-    else:
-        st.session_state["data"] = utils.nasa_feed(isLive=False, query="")
-
-    st.session_state["data"]
-    # st.toast(f"Data loaded with {len(st.session_state['data'].index)} items.")
 
 @st.fragment
 def hq_broadcaster():
     # st.button("Broadcast", on_click=services.publish_to_pipeline, type='primary', icon='📡')
     services.publish_to_pipeline(int(10*random()))
+    # image_tiles(generator=services.pipeline_to_broadcast, source='Broadcast', wait_message="Publishing assets...", columns=4, limit=0)
+    # for _ in services.pipeline_to_broadcast(): pass
+    st.dataframe(st.session_state["pipeline_success"])
+    st.dataframe(st.session_state["download_success"])
+    st.dataframe(st.session_state["broadcast_success"])
 
-    # tiles(generator=services.pipeline_to_broadcast, source='Broadcast', wait_message="Publishing assets...", columns=4, limit=0, withImages=True)
-    for _ in services.pipeline_to_broadcast(): pass
-    tiles(generator=lambda: [b for b in st.session_state['broadcast_success']], source='Broadcast', wait_message="Publishing assets...", columns=4, limit=0, withImages=True)
+    # image_tiles(generator=lambda: [b for b in st.session_state['broadcast_success']], source='Broadcast', wait_message="Publishing assets...", columns=4, limit=0)
 
 
 @st.fragment
 def hq_responder():
     # for item in services.request_listener():
     #     st.success(f"Responded to: {item['title']}")
-    tiles(generator=services.request_listener, source="Asset Request", wait_message="Checking for requests...", columns=4, limit=0, withImages=True)
+    image_tiles(generator=services.request_listener, source="Asset Request", wait_message="Checking for requests...", columns=4, limit=0)
 
 
 @st.fragment
@@ -128,7 +110,7 @@ def edge_actionbar():
 
 @st.fragment(run_every=30)
 def edge_listen_for_responses():
-    tiles(generator=services.response_listener, source="Asset Response", wait_message="Checking for responses...", columns=5, limit=0, withImages=True)
+    image_tiles(generator=services.response_listener, source="Asset Response", wait_message="Checking for responses...", columns=5, limit=0)
 
 
 def edge_asset_viewer():
@@ -153,7 +135,7 @@ def edge_completed():
 
 @st.fragment(run_every=30)
 def edge_listen_for_assets():
-    # tiles(generator=services.asset_listener, source="Broadcast", wait_message="Listening for assets...", columns=5, limit=0, withImages=False)
+    # message_tiles(generator=services.asset_listener, source="Broadcast", wait_message="Listening for assets...", columns=5, limit=0)
     with st.spinner("Listening for assets...", show_time=True):
         for asset in services.asset_listener():
             st.toast(f"Received asset: {asset['title']}")
@@ -195,9 +177,11 @@ def edge_requester():
 @st.fragment
 def statusbar(services: list):
     # Metrics
-    row = st.columns(len(services))
+    # row = st.columns(len(services))
+    # for index, service in enumerate(services):
+    #     row[index].metric(service.title(), len(st.session_state.get(f"{service}_success", [])), delta=-len(st.session_state.get(f"{service}_fail", 0)))
     for index, service in enumerate(services):
-        row[index].metric(service.title(), len(st.session_state.get(f"{service}_success", [])), delta=-len(st.session_state.get(f"{service}_fail", 0)))
+        st.metric(service.title(), len(st.session_state.get(f"{service}_success", [])), delta=-len(st.session_state.get(f"{service}_fail", 0)))
 
 
 def questions_to_image(filename: str, description: str):
