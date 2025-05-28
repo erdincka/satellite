@@ -3,10 +3,13 @@ import asyncio
 import sys
 import openai
 import base64
+import logging
+
+logger = logging.getLogger(__name__)
 
 # TODO: use parameters or env vars
 base_url = "http://host.docker.internal:8080/v1"
-model = "ggml_llava-v1.5-7b"
+model = "gpt-4-vision-preview"
 # model = "google/gemma-3-4b-it-qat-q4_0-gguf:Q4_0"
 # base_url = 'http://host.docker.internal:11434/v1'
 # model = 'gemma3:27b-it-qat'
@@ -23,6 +26,7 @@ async def image_query(image_b64: str|None, prompt: str = "describe the image"):
     global model, endpoint
 
     try:
+
         response = await client.chat.completions.create(
         # response = await client.completions.create(
             model=model,
@@ -30,26 +34,16 @@ async def image_query(image_b64: str|None, prompt: str = "describe the image"):
             # temperature=0.5,
             max_tokens=512,
             messages=[
-                {
-                "role": "user",
-                    "content": [
-                        { "type": "text", "text": prompt},
-                        { "type": "image_url", "image_url":
-                            {
-                                "url": f"data:image/png;base64,{image_b64}",
-                            },
-                        },
+                { "role": "system", "content": "You are a world class image analyzer." },
+                { "role": "user", "content": [
+                            { "type": "text", "text": prompt},
+                            { "type": "image_url", "image_url": "data:image/png;base64," + image_b64},
                         ],
-                },
-                # { "role": "system", "content": "You are a world class image analyzer." },
-                # { "role": "user", "content": [
-                #         {"type": "input_text", "text": prompt},
-                #         {"type": "input_image", "image_url": f"data:image/png;base64,{image_b64}"},
-                #     ],
-                # }
+                }, # pyright: ignore
             ],
         )
-        return response
+        return response.choices[0].message.content
+
     except openai.APIConnectionError as e:
         print("The server could not be reached")
         print(e.__cause__)  # an underlying Exception, likely raised within httpx.

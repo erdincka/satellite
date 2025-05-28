@@ -36,7 +36,7 @@ def pipeline_to_broadcast():
         if filename:
             st.session_state["download_success"].append(item)
             # Run AI narration on the image
-            item["analysis"] = utils.ai_image_analyzer(filename)
+            item["analysis"] = utils.ai_describe_image(filename)
             # Update the table with the analysis
             if iceberger.write(warehouse_path=f"{settings.MAPR_MOUNT}{settings.HQ_VOLUME}", namespace="hq", tablename="asset_table", records=[item]):
                 if streams.produce(stream=settings.HQ_STREAM, topic=settings.ASSET_TOPIC, messages=[item]):

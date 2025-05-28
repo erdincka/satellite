@@ -94,18 +94,26 @@ def image_to_base64(image_path: str):
 
 
 def ai_describe_image(filename: str):
-    # ai_description = vlm.image_to_text(image_path=f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}", question="describe the image")
-    ai_description = aiclient.image_query(image_b64=image_to_base64(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}"),
+    image_b64 = image_to_base64(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}")
+    ai_response = aiclient.image_query(image_b64=image_b64,
         prompt="analyze the scene in this image as an intelligence officer and describe the situation in 1 sentence")
-    logger.info("AI category for %s: %s", filename, ai_description)
-    return ai_description
+    logger.info("AI category for %s: %s", filename, ai_response)
+    return ai_response
 
 
 def ai_detect_objects(filename: str):
-    # ai_description = vlm.image_to_text(image_path=f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}", question="what do you see in the image?")
-    ai_description = aiclient.image_query(image_b64=image_to_base64(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}"), prompt="list the objects in the image")
-    logger.info("AI identification for %s: %s", filename, ai_description)
-    return ai_description
+    image_b64 = image_to_base64(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}")
+    ai_response = aiclient.image_query(image_b64=image_b64, prompt="list the objects in the image")
+    logger.info("AI identification for %s: %s", filename, ai_response)
+    return ai_response
+
+
+def ai_ask_question(filename: str, question: str):
+    # TODO: questions should be checked for malicious content
+    image_b64 = image_to_base64(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}")
+    ai_response = aiclient.image_query(image_b64=image_b64, prompt=question)
+    logger.info("AI identification for %s: %s", filename, ai_response)
+    return ai_response
 
 
 def process_request(request: dict) -> bool:

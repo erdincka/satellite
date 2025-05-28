@@ -220,6 +220,6 @@ def statusbar(services: list):
 
 
 def questions_to_image(filename: str, description: str):
-    response = utils.ask_question(filename, description)
+    response = utils.ai_ask_question(filename, description)
     logger.info("AI response: %s", response)
     st.session_state["ai_response"].write(response if response else "No response")
