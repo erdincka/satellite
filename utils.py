@@ -7,13 +7,37 @@ import logging
 import streamlit as st
 import settings
 import streams
-import vlm
+# import vlm
+import aiclient
+import base64
 
 logger = logging.getLogger(__name__)
 
-@st.cache_data
-def nasa_feed(isLive: bool, query: str):
-    logger.info("Loading data, Live: %s, Query: %s", isLive, query)
+class AssetItem:
+    def __init__(self, title, description, keywords, preview, href:str="", status:str="", analysis:str="", object:str=""):
+        self.title = title
+        self.description = description
+        self.keywords = keywords
+        self.preview = preview
+        self.href = href
+        self.status = status
+        self.analysis = analysis
+        self.object = object
+
+
+def load_data(live: bool = True):
+    if live:
+        logger.debug("Getting data from API...")
+        search_terms = ["missile", "earthquake", "tsunami", "oil", "flood", "iraq", "syria", "korea", "pacific"]
+        query = st.segmented_control(label="Assets", options=search_terms)
+        st.session_state["data"] = nasa_feed(isLive=True, query=query if query else "")
+    else:
+        logger.debug("Loading data from file...")
+        st.session_state["data"] = nasa_feed(isLive=False)
+
+
+def nasa_feed(isLive: bool, query: str = ""):
+    logger.debug("Loading data, Live: %s, Query: %s", isLive, query)
     data = None
     if isLive:
         with st.spinner("Using offline feed", show_time=True):
@@ -26,9 +50,14 @@ def nasa_feed(isLive: bool, query: str):
             with open("images.json", "r") as f:
                 data = json.loads(f.read())
 
+    logger.info("Feed assets: %s", len(data['collection']['items']) if data else 0)
+
     if data:
         df = parse_data(data)
         return df
+    else:
+        st.error("Failed to feed data.")
+        return pd.DataFrame()
 
 
 def parse_data(data):
@@ -51,26 +80,31 @@ def parse_data(data):
         return None
 
 
-def describe_image(filename: str):
-    ai_description = vlm.image_to_text(image_path=f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}", question="describe the image")
+def last_five(items: list):
+    return items[::-1][-5:]
+
+
+def image_to_base64(image_path: str):
+    try:
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode("utf-8")
+    except FileNotFoundError:
+        print(f"File not found: {image_path}")
+        return
+
+
+def ai_describe_image(filename: str):
+    # ai_description = vlm.image_to_text(image_path=f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}", question="describe the image")
+    ai_description = aiclient.image_query(image_b64=image_to_base64(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}"),
+        prompt="analyze the scene in this image as an intelligence officer and describe the situation in 1 sentence")
     logger.info("AI category for %s: %s", filename, ai_description)
     return ai_description
 
 
-def extract_objects(filename: str):
-    ai_description = vlm.image_to_text(image_path=f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}", question="what do you see in the image?")
+def ai_detect_objects(filename: str):
+    # ai_description = vlm.image_to_text(image_path=f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}", question="what do you see in the image?")
+    ai_description = aiclient.image_query(image_b64=image_to_base64(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}"), prompt="list the objects in the image")
     logger.info("AI identification for %s: %s", filename, ai_description)
-
-
-def ask_question(filename: str, image_description: str):
-    question = st.session_state["question"]
-    logger.info("Asking question: %s", question)
-    ai_description = vlm.image_to_text(image_path=f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}",
-        # question=f"Here is the image description: {image_description}, answer this question about the image: {question}")
-        question=question)
-    logger.info("AI identification for %s: %s", filename, ai_description)
-
-
     return ai_description
 
 
@@ -103,7 +137,7 @@ def process_request(request: dict) -> bool:
 
     # Send message for copied asset
     request["status"] = "fulfilled"
-    if streams.produce(settings.EDGE_STREAM, settings.REQUEST_TOPIC, json.dumps(request)):
+    if streams.produce(settings.EDGE_STREAM, settings.REQUEST_TOPIC, [request]):
         logger.info("Request processed: %s", request['title'])
         return True
     else:
@@ -155,7 +189,7 @@ def stream_replication_status(stream: str):
     URL = f"{settings.REST_URL}/stream/replica/list?path={stream}"
     r = httpx.get(URL, auth=(settings.MAPR_USER, settings.MAPR_PASSWORD), verify=False)
     if r.status_code == 200 and r.json().get("status") == "OK":
-        logger.info("Replicating: %s",r.json()['data'][0]['isUptodate'])
+        logger.debug("Replicating: %s",r.json()['data'][0]['isUptodate'])
         st.session_state["stream_replication"] = r.json()["data"][0].get("isUptodate", False)
     else:
         st.error(f"Failed to retrieve stream replication status. {r.text}")

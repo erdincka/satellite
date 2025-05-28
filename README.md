@@ -2,7 +2,31 @@
 
 ## Installation
 
-### Start with these steps if you are running the sandbox container
+### Serve LLM locally (skip if you plan to use the PCAI model)
+
+#### Install packages
+
+<!-- `brew install llama.cpp`
+
+
+#### Run Server
+
+`./llama-server -hf google/gemma-3-4b-it-qat-q4_0-gguf:Q4_0`
+
+#### Test
+
+`curl -X POST "http://localhost:8080/v1/completions" \
+	-H "Content-Type: application/json" \
+	--data '{
+		"model": "google/gemma-3-4b-it-qat-q4_0-gguf:Q4_0",
+		"prompt": "Once upon a time,",
+		"max_tokens": 512,
+		"temperature": 0.5
+	}'
+` -->
+
+
+## Configure the sandbox container
 
 - Start the sandbox container
 
@@ -57,27 +81,8 @@
 `echo mapr | maprlogin password -user mapr`
 
 
-<!-- ### Configure and mount NFSv4 (only if using NFSv4 - default is NFSv3 for sandbox container)
-
-Edit nfs4server.conf and change krb5 to sys:
-
-`sudo nano /opt/mapr/conf/nfs4server.conf`
-
-Go to line `SecType = krb5;` and change it to `SecType = sys;`
-
-Restart the NFSv4 server:
-
-`maprcli node services -nodes `hostname -f` -nfs4 restart`
-
-`sudo mount -t nfs4 -o proto=tcp,nolock,sec=sys localhost:/mapr /mapr`
-
- -->
-
-
 ### Enable and mount NFS
 
-<!-- echo "localhost:/mapr	/mapr	hard,nolock" > /opt/mapr/conf/mapr_fstab -->
-<!-- service mapr-warden restart -->
 ```bash
 mkdir -p /mapr
 mount -t nfs -o nolock,hard localhost:/mapr /mapr
@@ -117,6 +122,24 @@ and
 A lot
 
 - Point to remote (PCAI) LLM
+
+
+## NOTES
+
+### Configure and mount NFSv4 (only if using NFSv4)
+
+Edit nfs4server.conf and change krb5 to sys:
+
+`sudo nano /opt/mapr/conf/nfs4server.conf`
+
+Go to line `SecType = krb5;` and change it to `SecType = sys;`
+
+Restart the NFSv4 server:
+
+`maprcli node services -nodes `hostname -f` -nfs4 restart`
+
+`sudo mount -t nfs4 -o proto=tcp,nolock,sec=sys localhost:/mapr /mapr`
+
 
 
 ## RESET

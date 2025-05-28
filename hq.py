@@ -18,36 +18,36 @@ for op in services.HQ_SERVICES:
     st.session_state.setdefault(f"{op}_fail", [])
 st.session_state.setdefault("data", pd.DataFrame())
 
-@st.cache_data
-def load_data(live: bool = True):
-    if live:
-        search_terms = ["missile", "earthquake", "tsunami", "oil", "flood", "iraq", "syria", "korea", "pacific"]
-        query = st.segmented_control(label="Assets", options=search_terms)
-        st.session_state["data"] = utils.nasa_feed(isLive=True, query=query) # pyright: ignore
-    else:
-        st.session_state["data"] = utils.nasa_feed(isLive=False, query="")
-
 
 def main():
     st.header("Command Center")
 
-    load_data(st.session_state.get("isLive", False))
+    # Initialize the data to use in the app.
+    utils.load_data(st.session_state.get("isLive", False))
 
-    left, right = st.columns([2, 10], border=True)
-    with left:
-        pages.hq_actionbar()
-        pages.statusbar(services.HQ_SERVICES)
+    # App status bar
+    pages.hq_actionbar()
 
-    # HQ Services
-    with right:
-        pages.hq_broadcaster()
+    # Run Services
+    st.button("Broadcast some messages to start the flow", on_click=services.publish_to_pipeline, type='primary', icon='📡')
+    pages.hq_broadcaster()
+    #
+    # pages.hq_responder()
 
-        pages.hq_responder()
+    # st.dataframe(st.session_state["data"].to_dict(orient="records"))
+    # pages.image_tiles(st.session_state["data"].to_dict(orient="records"), "Feed")
+    pages.image_tiles(st.session_state["pipeline_success"], "Pipeline")
+    pages.image_tiles(st.session_state["download_success"], "Download")
+    pages.image_tiles(st.session_state["broadcast_success"], "Broadcast")
 
-    "Request"
-    st.dataframe(st.session_state["request_success"])
-    "Response"
-    st.dataframe(st.session_state["response_success"])
+    # DEBUG
+    # "Request"
+    # st.dataframe(st.session_state["request_success"])
+    # "Response"
+    # st.dataframe(st.session_state["response_success"])
+
+    # Show counters for processed assets
+    pages.statusbar(services.HQ_SERVICES)
 
 if __name__ == "__main__":
     logger.info("Running in HQ mode")

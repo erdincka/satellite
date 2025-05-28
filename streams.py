@@ -1,3 +1,4 @@
+import json
 import logging
 import httpx
 import settings
@@ -9,15 +10,14 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 CONSUMER_GROUP= "demo-app"
 
-def produce(stream: str, topic: str, message: str):
-
-    logger.debug("Got message %s for Topic: %s:%s", message, stream, topic)
-
+def produce(stream: str, topic: str, messages: list[dict]):
     p = Producer({"streams.producer.default.stream": stream})
+    logger.debug("Got message %d for Topic: %s:%s", len(messages), stream, topic)
 
     try:
-        logger.debug("Sending: %s", message)
-        p.produce(topic, message.encode("utf-8"))
+        for message in messages:
+            logger.debug("Sending: %s", message)
+            p.produce(topic, json.dumps(message).encode("utf-8"))
 
     except Exception as error:
         logger.warning(error)

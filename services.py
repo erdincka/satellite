@@ -16,38 +16,34 @@ EDGE_SERVICES = ["receive", "request", "response"]
 # HQ Services
 def publish_to_pipeline(count: int = 5):
     with st.spinner("Broadcasting pipeline...", show_time=True):
-        assets = st.session_state.get("data", pd.DataFrame()).to_json(orient='records', lines=True).splitlines() # pyright: ignore[reportOptionalMemberAccess]
-        logger.debug(f"Assets: {assets}")
-        for item in random.sample(assets, min(len(assets), count)):
-            # FIX: this shouldn't happen
-            if not item: return
-            if streams.produce(stream=settings.HQ_STREAM, topic=settings.PIPELINE, message=item):
-                i = json.loads(item)
-                logger.debug("In pipeline: %s", i["title"])
-                st.session_state["pipeline_success"].append(i)
-            else:
-                logger.error("Failed to put into pipeline: %s", item) # type: ignore
-                st.session_state["pipeline_fail"].append(item)
+        assets = st.session_state.get("data", pd.DataFrame()).to_dict(orient='records')
+        logger.info("Picking random %d assets out of %d samples", count, len(assets))
+        messages = random.sample(assets, min(len(assets), count))
+        if streams.produce(stream=settings.HQ_STREAM, topic=settings.PIPELINE, messages=messages):
+            logger.info("Published %d messages", len(messages))
+            st.session_state["pipeline_success"].extend(messages)
+        else:
+            logger.error("Failed to put into pipeline: %s", messages) # type: ignore
+            st.session_state["pipeline_fail"].extend(messages)
 
 
 def pipeline_to_broadcast():
     for msg in streams.consume(stream=settings.HQ_STREAM, topic=settings.PIPELINE):
         item = json.loads(msg)
         logger.info("Asset from pipeline: %s", item["title"])
-        logger.debug(item)
         logger.debug("Downloading from: %s", item["preview"])
         filename = mapr.save_from_url(item["preview"], st.session_state["isLive"])
         if filename:
             st.session_state["download_success"].append(item)
             # Run AI narration on the image
-            item["analysis"] = utils.describe_image(filename)
+            item["analysis"] = utils.ai_image_analyzer(filename)
             # Update the table with the analysis
             if iceberger.write(warehouse_path=f"{settings.MAPR_MOUNT}{settings.HQ_VOLUME}", namespace="hq", tablename="asset_table", records=[item]):
-                if streams.produce(stream=settings.HQ_STREAM, topic=settings.ASSET_TOPIC, message=json.dumps(item)):
+                if streams.produce(stream=settings.HQ_STREAM, topic=settings.ASSET_TOPIC, messages=[item]):
                     st.session_state["broadcast_success"].append(item)
                     yield item
                 else:
-                    st.error(f"Failed to publish: {item['title']}")
+                    st.error(f"Failed to broadcast: {item['title']}")
                     st.session_state["broadcast_fail"].append(item)
             else:
                 st.error(f"Failed to update on HQ asset table: {item['title']}")
@@ -106,7 +102,7 @@ def asset_request():
         # Mark asset for retrieval
         asset["status"] = "requested"
 
-        if streams.produce(settings.EDGE_STREAM, settings.REQUEST_TOPIC, json.dumps(asset)):
+        if streams.produce(settings.EDGE_STREAM, settings.REQUEST_TOPIC, [asset]):
             logger.debug("Requested: %s", asset)
             st.session_state["request_success"].append(asset)
             yield asset
