@@ -30,7 +30,7 @@
 
 - Start the sandbox container
 
-`docker run -d --name mapr --privileged -p 8443:8443 -p 8501:8501 -p 8502:8502 -p 9000:9000 -p 2222:22 -e clusterName=maprdemo.io -e isSecure -e MAPR_TZ=Eruope/London --hostname maprdemo.io maprtech/dev-sandbox-container`
+`docker run -d --name mapr --privileged -p 8443:8443 -p 8501:8501 -p 8502:8502 -p 9000:9000 -p 2222:22 -e clusterName=maprdemo.io -e isSecure -e MAPR_TZ=Europe/London --hostname maprdemo.io maprtech/dev-sandbox-container`
 
 - Login to the container
 
