@@ -2,9 +2,9 @@
 
 ## Installation
 
-### Serve LLM locally (skip if you plan to use the PCAI model)
+<!-- ### Serve LLM locally (skip if you plan to use the PCAI model)
 
-#### Install packages
+#### Install packages -->
 
 <!-- `brew install llama.cpp`
 
@@ -40,6 +40,7 @@
 
 `apt update && apt install -y git python3-dev gcc`
 
+*TIP* Save git credentials: `git config --global credentials.helper store`
 
 ### Clone the repository
 
@@ -51,23 +52,19 @@
 `cd satellite`
 
 
-### Create venv
+### Create and Activate venv
 
-<!-- `python3 -m venv .venv` -->
 `curl -LsSf https://astral.sh/uv/install.sh | sh; source ~/.bashrc`
 
-`uv venv .venv`
-
-
-### Activate virtual environment
-
-`source .venv/bin/activate`
+`uv venv .venv && source .venv/bin/activate`
 
 
 ### Install dependencies
 
 <!-- `pip install -r requirements.txt` -->
 `uv pip install -r requirements.txt`
+
+#### Build and install mapr-streams client
 
 `CFLAGS=-I/opt/mapr/include LDFLAGS=-L/opt/mapr/lib uv pip install mapr-streams-python`
 
@@ -81,12 +78,12 @@
 `echo mapr | maprlogin password -user mapr`
 
 
-### Enable and mount NFS
+<!-- ### Enable and mount NFS
 
 ```bash
 mkdir -p /mapr
 mount -t nfs -o nolock,hard localhost:/mapr /mapr
-```
+``` -->
 
 
 ### Create the volumes and streams on Data Fabric
@@ -123,6 +120,12 @@ A lot
 
 - Point to remote (PCAI) LLM
 
+- Set up and reset of demo volumes and streams
+
+- Containerize the whole demo app
+
+- Allow using external DF cluster(s)
+
 
 ## NOTES
 
@@ -151,6 +154,7 @@ maprcli volume remove -name edge_replicated -force true
 maprcli volume remove -name edge_assets -force true
 maprcli volume remove -name edge -force true
 maprcli volume remove -name hq_assets -force true
+maprcli volume remove -name satellite -force true
 ```
 
 ## Contributing

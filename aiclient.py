@@ -1,5 +1,4 @@
-from openai import AsyncOpenAI
-import asyncio
+from openai import OpenAI
 import sys
 import openai
 import base64
@@ -14,21 +13,21 @@ model = "gpt-4-vision-preview"
 # base_url = 'http://host.docker.internal:11434/v1'
 # model = 'gemma3:27b-it-qat'
 
-client = AsyncOpenAI(
+client = OpenAI(
     base_url = base_url,
     api_key = "llama.cpp" # required, but unused
 )
 
 
-async def image_query(image_b64: str|None, prompt: str = "describe the image"):
+def image_query(image_b64: str|None, prompt: str = "describe the image"):
     if not image_b64: return
 
     global model, endpoint
 
     try:
 
-        response = await client.chat.completions.create(
-        # response = await client.completions.create(
+        response = client.chat.completions.create(
+        # response = client.completions.create(
             model=model,
             # prompt=f"You are a world class image analyzer. Follow the prompts given by the user: {prompt}",
             # temperature=0.5,
@@ -60,5 +59,5 @@ if __name__ in ["__main__", "__amain__"]:
     image_path = sys.argv[1]
     with open(image_path, "rb") as image_file:
         image_b64 = base64.b64encode(image_file.read()).decode("utf-8")
-    description = asyncio.run(image_query(image_b64))
+    description = image_query(image_b64)
     print(description)

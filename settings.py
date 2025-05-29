@@ -1,3 +1,4 @@
+import logging
 import socket
 
 def get_cluster_name():
@@ -5,6 +6,9 @@ def get_cluster_name():
         line = f.readline().strip('\n')
         cluster_name = line.split(" ")[0]
         return cluster_name
+
+TITLE = "Data Fabric Core to Edge Demo"
+STORAGE_SECRET = "ezmer@1r0cks"
 
 # MY_IP = whatismyip()
 MY_HOSTNAME = socket.gethostname()
@@ -27,3 +31,33 @@ ASSET_TOPIC = "assets"
 REQUEST_TOPIC = "requests"
 
 MAPR_MOUNT = f"/mapr/{MAPR_CLUSTER}"
+
+
+# Application settings
+HQ_SERVICES = ["pipeline", "download", "record", "broadcast", "request", "response"]
+EDGE_SERVICES = ["receive", "request", "response"]
+
+HQ_TILES = []
+EDGE_TILES = []
+
+# Configure logging
+
+# INSECURE REQUESTS ARE OK in Lab
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# reduce logs from these
+logging.getLogger("streams_handle_rd_kafka_assign").setLevel(logging.FATAL)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("requests").setLevel(logging.WARNING)
+
+logging.getLogger("watchfiles").setLevel(logging.FATAL)
+
+logging.getLogger("faker").setLevel(logging.FATAL)
+
+logging.getLogger("pyiceberg.io").setLevel(logging.WARNING)
+
+logging.getLogger("mapr.ojai.storage.OJAIConnection").setLevel(logging.WARNING)
+logging.getLogger("mapr.ojai.storage.OJAIDocumentStore").setLevel(logging.WARNING)

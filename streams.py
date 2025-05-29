@@ -12,7 +12,7 @@ CONSUMER_GROUP= "demo-app"
 
 def produce(stream: str, topic: str, messages: list[dict]):
     p = Producer({"streams.producer.default.stream": stream})
-    logger.debug("Got message %d for Topic: %s:%s", len(messages), stream, topic)
+    logger.debug("Got %d messages for Topic: %s:%s", len(messages), stream, topic)
 
     try:
         for message in messages:
@@ -20,7 +20,7 @@ def produce(stream: str, topic: str, messages: list[dict]):
             p.produce(topic, json.dumps(message).encode("utf-8"))
 
     except Exception as error:
-        logger.warning(error)
+        logger.error(error)
         return False
 
     finally:
@@ -31,7 +31,7 @@ def produce(stream: str, topic: str, messages: list[dict]):
 
 def consume(stream: str, topic: str):
 
-    logger.debug("Consuming from stream: %:%s", stream, topic)
+    logger.debug("Consuming from stream: %s:%s", stream, topic)
     MAX_POLL_TIME = 2
 
     consumer = Consumer(
@@ -49,15 +49,14 @@ def consume(stream: str, topic: str):
 
             if not message.error(): yield message.value().decode("utf-8")
 
-            elif message.error().code() == KafkaError._PARTITION_EOF:
-                logger.info("No more messages in topic: %s", topic)
-                # ui.notify(f"No more messages in {topic}")
-                raise EOFError
+            elif message.error().code() == KafkaError._PARTITION_EOF: raise EOFError
             # silently ignore other errors
             else: logger.warning(message.error())
 
     except Exception as error:
-        if not isinstance(error, EOFError): logger.error(error)
+        if not isinstance(error, EOFError):
+            logger.error("Failed to consume from topic: %s", topic)
+            logger.error(error)
 
     finally:
         consumer.close()

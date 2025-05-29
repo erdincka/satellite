@@ -4,36 +4,56 @@ import shutil
 import httpx
 import pandas as pd
 import logging
-import streamlit as st
 import settings
 import streams
-# import vlm
 import aiclient
 import base64
+from nicegui import ui
 
 logger = logging.getLogger(__name__)
 
-class AssetItem:
-    def __init__(self, title, description, keywords, preview, href:str="", status:str="", analysis:str="", object:str=""):
-        self.title = title
-        self.description = description
-        self.keywords = keywords
-        self.preview = preview
-        self.href = href
-        self.status = status
-        self.analysis = analysis
-        self.object = object
+# class AssetItem:
+#     def __init__(self, title, description, keywords, preview, href:str="", status:str="", analysis:str="", object:str=""):
+#         self.title = title
+#         self.description = description
+#         self.keywords = keywords
+#         self.preview = preview
+#         self.href = href
+#         self.status = status
+#         self.analysis = analysis
+#         self.object = object
+
+class LogElementHandler(logging.Handler):
+    """A logging handler that emits messages to a log element."""
+
+    def __init__(self, element: ui.log, level: int = logging.DEBUG) -> None:
+        self.element = element
+        super().__init__(level)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            self.element.push(msg)
+        except Exception:
+            self.handleError(record)
+
+
+# Handle exceptions without UI failure
+def gracefully_fail(exc: Exception):
+    print("gracefully failing...")
+    logger.exception(exc)
 
 
 def load_data(live: bool = True):
     if live:
         logger.debug("Getting data from API...")
         search_terms = ["missile", "earthquake", "tsunami", "oil", "flood", "iraq", "syria", "korea", "pacific"]
-        query = st.segmented_control(label="Assets", options=search_terms)
-        st.session_state["data"] = nasa_feed(isLive=True, query=query if query else "")
+        # query = st.segmented_control(label="Assets", options=search_terms)
+        query = search_terms[0]
+        return nasa_feed(isLive=True, query=query if query else "")
     else:
         logger.debug("Loading data from file...")
-        st.session_state["data"] = nasa_feed(isLive=False)
+        return nasa_feed(isLive=False)
 
 
 def nasa_feed(isLive: bool, query: str = ""):
@@ -46,9 +66,8 @@ def nasa_feed(isLive: bool, query: str = ""):
             if r.status_code == 200:
                 data = r.json()
     else:
-        with st.spinner("Calling NASA API", show_time=True):
-            with open("images.json", "r") as f:
-                data = json.loads(f.read())
+        with open("images.json", "r") as f:
+            data = json.loads(f.read())
 
     logger.info("Feed assets: %s", len(data['collection']['items']) if data else 0)
 
@@ -56,7 +75,7 @@ def nasa_feed(isLive: bool, query: str = ""):
         df = parse_data(data)
         return df
     else:
-        st.error("Failed to feed data.")
+        logger.error("Failed to feed data.")
         return pd.DataFrame()
 
 
@@ -64,7 +83,7 @@ def parse_data(data):
     """Parse the NASA API response data into a DataFrame."""
     logger.debug(f"Parsing NASA API response with {len(data['collection']['items'])} items.")
     try:
-        logger.debug(data)
+        # logger.debug(data)
         df = pd.DataFrame(data["collection"]["items"])
         # df.set_index("href", inplace=True)
         df["title"] = df["data"].apply(lambda x: x[0]["title"])
@@ -76,8 +95,7 @@ def parse_data(data):
         return df
     except Exception as error:
         logger.error(error)
-        st.error(error)
-        return None
+        return pd.DataFrame()
 
 
 def last_five(items: list):
@@ -195,12 +213,13 @@ def toggle_stream_replication(upstream: bool):
 
 def stream_replication_status(stream: str):
     URL = f"{settings.REST_URL}/stream/replica/list?path={stream}"
+    logger.debug("Checking replication for: %s",stream)
     r = httpx.get(URL, auth=(settings.MAPR_USER, settings.MAPR_PASSWORD), verify=False)
     if r.status_code == 200 and r.json().get("status") == "OK":
         logger.debug("Replicating: %s",r.json()['data'][0]['isUptodate'])
-        st.session_state["stream_replication"] = r.json()["data"][0].get("isUptodate", False)
+        return r.json()["data"][0].get("isUptodate", False)
     else:
-        st.error(f"Failed to retrieve stream replication status. {r.text}")
+        logger.error(f"Failed to retrieve stream replication status. {r.text}")
 
 
 def volume_mirror_status():

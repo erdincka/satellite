@@ -8,6 +8,7 @@ import streamlit as st
 import services
 import settings
 import utils
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -27,50 +28,58 @@ def asset_viewer(asset: dict):
         st.session_state["ai_response"] = st.chat_message("ai")
 
 
-@st.cache_data(ttl=60)
-def get_item_display_time(item):
-    """Returns the remaining display time for an item."""
-    now = time.time()
-    created_at = item.get("created_at", now) # use now if no created_at
-    remaining_time = max(0, 20 - (now - created_at)) # 20 seconds
-    return remaining_time
-
 @st.fragment
-def image_tiles(items: list, source: str, wait_message: str = "Loading tiles...", columns: int = 4):
+def image_tiles():
     """Displays a list of items in a grid layout."""
     index = 0
     item_containers = {}  # Dictionary to store containers for each item
-    logger.info("Got %s items to display", len(items))
+    # logger.info("Got %s items to display", len(items))
+    columns = 4
 
-    with st.spinner(wait_message, show_time=True):
-        grid = st.columns(columns)
-        for item in utils.last_five(items):
-            if isinstance(item, str):
-                item = json.loads(item)
-            item['created_at'] = time.time()  # record creation time
-            with grid[index % len(grid)].container(border=True):
-                # st.subheader(source, divider=True, anchor=False)
-                st.button(label=source.upper(), on_click=asset_viewer, args=(item,), key=f"{source}_{index}", type='tertiary')
-                # st.image(item['preview'] if 'preview' in item else [], caption=item['title'], width=180)
-                # st.text(f"Category: {item['analysis']}")
-                st.text(f"Description: {item['description'][:20]}{'...' if len(item['description']) > 20 else ''}", help=item['description'])
+    items = []
+    for item in st.session_state["pipeline_success"]:
+        item["displayed_as"] = "Pipeline"
+        items.append(item)
+    for item in st.session_state["download_success"]:
+        item["displayed_as"] = "Download"
+        items.append(item)
+    for item in st.session_state["broadcast_success"]:
+        item["displayed_as"] = "Broadcast"
+        items.append(item)
+    for item in st.session_state["request_success"]:
+        item["displayed_as"] = "Request"
+        items.append(item)
+    for item in st.session_state["response_success"]:
+        item["displayed_as"] = "Response"
+        items.append(item)
+
+    # st.dataframe(st.session_state["broadcast_success"])
+    grid = st.columns(columns)
+    items = sorted(items, key=lambda x: x['created_at'], reverse=True)[:30]
+
+    for item in items:
+        category = item.get('displayed_as', None)
+        if isinstance(item, str):
+            item = json.loads(item)
+        item['display_at'] = time.time()  # record creation time
+        with grid[index % len(grid)].container(border=True):
+            st.subheader(category, divider=True, anchor=False)
+            # st.button(label=category.upper(), on_click=asset_viewer, args=(item,), key=f"{category}_{index}", type='tertiary')
+            if category in ["Pipeline"]:
+                st.button(label=item['title'][:20], on_click=asset_viewer, args=(item,), key=f"{category}_{index}", type='tertiary')
                 st.text(f"Keywords: {item.get('keywords', '')[:20]}{'...' if len(item['keywords']) > 20 else ''}", help=item.get('keywords', None))
+            else:
+                st.image(item['preview'] if 'preview' in item else [], caption=item['title'], width=180)
+            # st.text(f"Category: {item['analysis']}")
+            if category in ["Broadcast"]:
+                st.text(f"Description: {item['description'][:20]}{'...' if len(item['description']) > 20 else ''}", help=item['description'])
+                if "analysis" in item:
+                    st.text(f"AI Description: {item['analysis'][:20]}{'...' if len(item['analysis']) > 20 else ''}", help=item['analysis'])
+            if category in ["Response"]:
                 if "object" in item:
                     st.text(f"Detected: {item['object']}")
-                item_containers[index] = st.empty()  # create an empty container
-                index += 1
-
-    # Update the display periodically
-    for index, container in item_containers.items():
-        item = next((item for item in items if item.get('index', -1) == index), None)
-        if item is None:
-            continue
-
-        remaining_time = get_item_display_time(item)
-        if remaining_time > 0:
-            container.write(f"Remaining time: {int(remaining_time)} seconds")
-        else:
-            container.empty()  # remove the item
+            item_containers[index] = st.empty()  # create an empty container
+            index += 1
 
 @st.fragment
 def message_tiles(generator: Callable, source: str, wait_message: str = "Loading tiles...", limit: int = 5, columns: int = 5):
@@ -100,7 +109,7 @@ def hq_diagram():
 @st.fragment
 def hq_actionbar():
     # Connectivity status
-    utils.stream_replication_status(settings.HQ_STREAM)
+    st.session_state["stream_replication"] = utils.stream_replication_status(settings.HQ_STREAM)
     cols = st.columns(3)
     cols[0].toggle("Live", key="isLive", help="Toggle live data fetching from NASA")
     cols[1].write(f"Connected: {':white_check_mark:'if st.session_state.get('stream_replication', False) else ':exclamation:'}")
@@ -216,7 +225,8 @@ def edge_requester():
 def statusbar(services: list):
     cols = st.columns(len(services))
     for index, service in enumerate(services):
-        cols[index].metric(service.title(), len(st.session_state.get(f"{service}_success", [])), delta=-len(st.session_state.get(f"{service}_fail", 0)))
+        cols[0].metric(service.title(), len(st.session_state.get(f"{service}_success", [])), delta=-len(st.session_state.get(f"{service}_fail", 0)))
+        # cols[index].metric(service.title(), len(st.session_state.get(f"{service}_success", [])), delta=-len(st.session_state.get(f"{service}_fail", 0)))
 
 
 def questions_to_image(filename: str, description: str):

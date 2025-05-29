@@ -18,6 +18,7 @@ jsonschema-specifications==2025.4.1
 markupsafe==3.0.2
 narwhals==1.39.0
 numpy==2.2.5
+openai==1.82.0
 packaging==24.2
 pandas==2.2.3
 pillow==11.2.1
@@ -36,9 +37,7 @@ SQLAlchemy==2.0.41
 streamlit==1.45.0
 tenacity==9.1.2
 toml==0.10.2
-torch==2.7.0
 tornado==6.4.2
-transformers==4.52.1
 typing-extensions==4.13.2
 tzdata==2025.2
 urllib3==2.4.0
