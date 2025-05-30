@@ -1,235 +1,86 @@
-import time
-import json
+import textwrap
+from nicegui import ui, app, run
 import logging
-import os
-import random
-from typing import Callable
-import streamlit as st
+
 import services
 import settings
+from utils import LogElementHandler
 import utils
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-
-@st.dialog("Asset Viewer", width='large')
-def asset_viewer(asset: dict):
-    logger.info("Opening asset viewer for %s", asset['title'])
-
-    st.image(asset['preview'], caption=asset['title'])
-    st.text(f"Description: {asset['description']}")
-    st.text(f"Keywords: {asset.get('keywords', None)}")
-    if "analysis" in asset:
-        st.text(f"Category: {asset.get('analysis', None)}")
-    if "object" in asset:
-        st.text(f"Detected: {asset.get('object', None)}")
-        st.chat_input(key="question", placeholder="Ask a question...", on_submit=questions_to_image, args=(asset["preview"].split('/')[-1], asset["description"],))
-        st.session_state["ai_response"] = st.chat_message("ai")
+def toggle_debug():
+    app.storage.user["debug"] = not app.storage.user["debug"]
+    logger.root.setLevel(logging.DEBUG if app.storage.user["debug"] else logging.INFO)
+    logger.info("Debug mode %s", app.storage.user["debug"])
 
 
-@st.fragment
-def image_tiles():
-    """Displays a list of items in a grid layout."""
-    index = 0
-    item_containers = {}  # Dictionary to store containers for each item
-    # logger.info("Got %s items to display", len(items))
-    columns = 4
-
-    items = []
-    for item in st.session_state["pipeline_success"]:
-        item["displayed_as"] = "Pipeline"
-        items.append(item)
-    for item in st.session_state["download_success"]:
-        item["displayed_as"] = "Download"
-        items.append(item)
-    for item in st.session_state["broadcast_success"]:
-        item["displayed_as"] = "Broadcast"
-        items.append(item)
-    for item in st.session_state["request_success"]:
-        item["displayed_as"] = "Request"
-        items.append(item)
-    for item in st.session_state["response_success"]:
-        item["displayed_as"] = "Response"
-        items.append(item)
-
-    # st.dataframe(st.session_state["broadcast_success"])
-    grid = st.columns(columns)
-    items = sorted(items, key=lambda x: x['created_at'], reverse=True)[:30]
-
-    for item in items:
-        category = item.get('displayed_as', None)
-        if isinstance(item, str):
-            item = json.loads(item)
-        item['display_at'] = time.time()  # record creation time
-        with grid[index % len(grid)].container(border=True):
-            st.subheader(category, divider=True, anchor=False)
-            # st.button(label=category.upper(), on_click=asset_viewer, args=(item,), key=f"{category}_{index}", type='tertiary')
-            if category in ["Pipeline"]:
-                st.button(label=item['title'][:20], on_click=asset_viewer, args=(item,), key=f"{category}_{index}", type='tertiary')
-                st.text(f"Keywords: {item.get('keywords', '')[:20]}{'...' if len(item['keywords']) > 20 else ''}", help=item.get('keywords', None))
-            else:
-                st.image(item['preview'] if 'preview' in item else [], caption=item['title'], width=180)
-            # st.text(f"Category: {item['analysis']}")
-            if category in ["Broadcast"]:
-                st.text(f"Description: {item['description'][:20]}{'...' if len(item['description']) > 20 else ''}", help=item['description'])
-                if "analysis" in item:
-                    st.text(f"AI Description: {item['analysis'][:20]}{'...' if len(item['analysis']) > 20 else ''}", help=item['analysis'])
-            if category in ["Response"]:
-                if "object" in item:
-                    st.text(f"Detected: {item['object']}")
-            item_containers[index] = st.empty()  # create an empty container
-            index += 1
-
-@st.fragment
-def message_tiles(generator: Callable, source: str, wait_message: str = "Loading tiles...", limit: int = 5, columns: int = 5):
-    index = 0
-    with st.spinner(wait_message, show_time=True):
-        grid = st.columns(columns)
-        for item in generator() if limit == 0 else generator()[:-limit]:
-            with grid[index%len(grid)].container(border=True):
-                # st.subheader(source, divider=True, anchor=False)
-                st.button(label=source.upper(), on_click=asset_viewer, args=(item,), key=f"{source}_{index}", type='tertiary')
-                "---"
-                st.text(item['title'][:20], help=item['title'])
-                st.text(f"Category: {item['analysis']}")
-                st.text(f"Description: {item['description'][:20]}{'...' if len(item['description']) > 20 else ''}", help=item['description'])
-                st.text(f"Keywords: {item.get('keywords', '')[:20]}{'...' if len(item['keywords']) > 20 else ''}", help=item.get('keywords', None))
-                if "object" in item:
-                    st.text(f"Detected: {item['object']}")
-                # st.button(label="", icon=":material/open_in_new:", on_click=asset_viewer, args=(item,), key=f"{source}_{index}")
-                index += 1
+async def start_demo():
+    await run.io_bound(services.pipeline_to_broadcast, isLive=False)
+    logger.debug("After broadcast: %d", len(settings.HQ_TILES))
 
 
-@st.dialog(title="Demo flow", width="large")
-def hq_diagram():
-    st.image("./app_light.png") # TODO: when st delivers runtime theme detection, use that to pick the right image
+def logging_card():
+    # Realtime logging
+    with ui.card().props("flat") as logging_card:
+        # ui.label("App log").classes("uppercase")
+        log = ui.log().classes("h-24 text-primary")
+        handler = LogElementHandler(log, logging.INFO)
+        rootLogger = logging.getLogger()
+        rootLogger.addHandler(handler)
+        ui.context.client.on_disconnect(lambda: rootLogger.removeHandler(handler))
+        # rootLogger.info("Logging started")
+
+    return logging_card
 
 
-@st.fragment
-def hq_actionbar():
-    # Connectivity status
-    st.session_state["stream_replication"] = utils.stream_replication_status(settings.HQ_STREAM)
-    cols = st.columns(3)
-    cols[0].toggle("Live", key="isLive", help="Toggle live data fetching from NASA")
-    cols[1].write(f"Connected: {':white_check_mark:'if st.session_state.get('stream_replication', False) else ':exclamation:'}")
-    cols[2].write(f"Mounted: {':white_check_mark:' if os.path.exists(settings.MAPR_MOUNT) else ':exclamation:'}")
+# Image dialog
+def show_asset(asset: dict):
+    with ui.dialog().props("") as show, ui.card().classes("grow").props("animated fadeIn fadeOut"):
+        ui.label(f"Asset: {asset['title']}").classes("w-full text-wrap")
+        ui.space()
+        ui.label(f"Description: {asset['description']}").classes("w-full text-wrap")
+        ui.label(f"Keywords: {asset['keywords']}").classes("w-full text-wrap")
+        ui.space()
+        if asset["service"] in ["response", "broadcast"]:
+            ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}")
+        if "analysis" in asset:
+            ui.label(f"AI Summary: {asset['analysis']}")
+        if "object" in asset:
+            ui.label(f"Detected: {asset['object']}")
+            ui.input("question", placeholder="Ask a question...",)
+            # on_submit=questions_to_image, args=(asset["preview"].split('/')[-1], asset["description"]
+            ui.chat_message(name="AI Assistant").bind_label_from(app.storage.user, "ai_response")
+
+    show.on("close", show.clear)
+    show.open()
 
 
-@st.fragment
-def hq_broadcaster():
-    # Publish some messages to the pipeline
-    # st.button("Broadcast some messages to start the flow", on_click=services.publish_to_pipeline, type='primary', icon='📡')
-    services.publish_to_pipeline(random.randint(1,10))
+# return image to display on UI
+async def dashboard_tiles(messages: list):
+    # Return an image card if available
+    while len(messages) > 0:
+        asset = messages.pop(0) # FIFO
+        logger.debug("Process tile for asset: %s", asset)
 
-    # Process and broadcast messages in pipeline
-    # image_tiles(generator=services.pipeline_to_broadcast, source='Broadcast', wait_message="Publishing assets...", columns=4, limit=0)
-    for _ in services.pipeline_to_broadcast(): pass # no need for the returning items
-    # st.write("HQ PROCESS TOPICS")
-    # st.write("Pipeline")
-    # st.dataframe(st.session_state["pipeline_success"][::-1])
-    # st.write("Download")
-    # st.dataframe(st.session_state["download_success"][::-1])
-    # st.write("Broadcast")
-    # st.dataframe(st.session_state["broadcast_success"][::-1])
+        with ui.card().classes("h-80").props("animate fadeIn fadeOut bordered").tight() as tileCard:
+            with ui.card_section().classes(f"w-full text-sm {settings.BGCOLORS[asset["service"]]}"):
+                ui.label(asset['service']).classes("uppercase")
+            if asset["service"] in ["broadcast"]:
+                ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}")
+            if asset['service'] in ["response"]:
+                ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}")
+            ui.space()
+            with ui.card_section().classes("text-sm"):
+                ui.label(textwrap.shorten(asset['description'], 32)).tooltip(asset['description']).classes("text-sm")
+                ui.label(textwrap.shorten(asset['keywords'], 32)).tooltip(asset['keywords']).classes("text-italic")
+            with ui.card_section():
+                ui.label(textwrap.shorten(asset['title'], 32)).classes("text-sm").tooltip(asset['title']).classes("text-bold")
 
-    # image_tiles(generator=lambda: [b for b in st.session_state['broadcast_success']], source='Broadcast', wait_message="Publishing assets...", columns=4, limit=0)
+            tileCard.on("click", lambda a=asset: show_asset(a)) # pyright: ignore
+            if asset['service'] not in ["response", "broadcast"]: # auto remove tiles if not broadcast (hq) or response (edge)
+                ui.timer(app.storage.user.get("tile_remove", 20), tileCard.delete, once=True)
 
+            app.storage.user[asset["service"]] = app.storage.user.get(asset["service"], 0) + 1
 
-@st.fragment
-def hq_responder():
-    for item in services.request_listener():
-        st.success(f"Responded to: {item['title']}")
-    # image_tiles(generator=services.request_listener, source="Asset Request", wait_message="Checking for requests...", columns=4, limit=0)
-
-
-@st.fragment
-def edge_actionbar():
-    row = st.columns(4)
-    utils.stream_replication_status(settings.EDGE_STREAM)
-    row[0].toggle("Stream replication", key="stream_replication", help="Enable or disable stream replication", on_change=utils.toggle_stream_replication, args=(False,))
-    # row[1].write(f"Volume Mirror: {':white_check_mark' if st.session_state.get('volume_mirror', False) else ':exclamation:'}")
-    row[2].write(f"Mount Status: {':white_check_mark:' if os.path.exists(settings.MAPR_MOUNT) else ':exclamation:'}")
-    row[3].button("Mirror files", on_click=utils.start_volume_mirror, icon=":material/download:")
-
-
-@st.fragment(run_every=30)
-def edge_listen_for_responses():
-    for item in services.response_listener():
-        st.success(f"Reply received: {item['title']}")
-    # image_tiles(generator=services.response_listener, source="Asset Response", wait_message="Checking for responses...", columns=5, limit=0)
-
-
-def edge_asset_viewer():
-    view_assets = st.session_state["view_assets"]["selection"]["rows"]
-    if len(view_assets) == 0: # no selection
-        return
-    asset = st.session_state["response_success"][view_assets[0]]
-    logger.info("Object detection in: %s", asset['preview'].split('/')[-1])
-    asset["object"] = utils.ai_detect_objects(filename=asset["preview"].split('/')[-1])
-    logger.info("Detected: %s", asset["object"])
-    asset_viewer(asset)
-
-
-@st.fragment
-def edge_completed():
-    st.dataframe(st.session_state["response_success"],
-        selection_mode="single-row",
-        on_select=edge_asset_viewer,
-        key="view_assets"
-    )
-
-
-@st.fragment(run_every=30)
-def edge_listen_for_assets():
-    # message_tiles(generator=services.asset_listener, source="Broadcast", wait_message="Listening for assets...", columns=5, limit=0)
-    with st.spinner("Listening for assets...", show_time=True):
-        for asset in services.asset_listener():
-            st.toast(f"Received asset: {asset['title']}")
-
-
-# @st.fragment
-# def edge_asset_list():
-#     root = f"{settings.MAPR_MOUNT}/{settings.EDGE_ASSETS}"
-#     logger.info("Listing files in %s", root)
-#     files = []
-#     for file in os.listdir(root):
-#         logger.info(file)
-#         files.append(file)
-#     st.session_state["edge_asset_files"] = files
-#     st.dataframe(st.session_state["edge_asset_files"])
-
-
-@st.fragment
-def edge_requester():
-    st.dataframe([
-        {
-            'Status': a['status'] if 'status' in a else 'broadcast',
-            'Title': a['title'].title(),
-            'Description': a['description'],
-            'Category': a['analysis'] if 'analysis' in a else 'Not analyzed',
-        } for a in st.session_state["asset_broadcast"] ],
-        hide_index=True,
-        selection_mode="single-row",
-        on_select="rerun",
-        key="selected_assets",
-        height=200
-    )
-
-    # st.dataframe(st.session_state["selected_assets"])
-    for asset in services.asset_request():
-        st.toast("Asset requested: {}".format(asset['title']))
-
-
-@st.fragment
-def statusbar(services: list):
-    cols = st.columns(len(services))
-    for index, service in enumerate(services):
-        cols[0].metric(service.title(), len(st.session_state.get(f"{service}_success", [])), delta=-len(st.session_state.get(f"{service}_fail", 0)))
-        # cols[index].metric(service.title(), len(st.session_state.get(f"{service}_success", [])), delta=-len(st.session_state.get(f"{service}_fail", 0)))
-
-
-def questions_to_image(filename: str, description: str):
-    response = utils.ai_ask_question(filename, description)
-    logger.info("AI response: %s", response)
-    st.session_state["ai_response"].write(response if response else "No response")
+        return tileCard

@@ -111,11 +111,11 @@ def image_to_base64(image_path: str):
         return
 
 
-def ai_describe_image(filename: str):
+def ai_describe_image(filename: str, context: str = ""):
     image_b64 = image_to_base64(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}")
     ai_response = aiclient.image_query(image_b64=image_b64,
-        prompt="analyze the scene in this image as an intelligence officer and describe the situation in 1 sentence")
-    logger.info("AI category for %s: %s", filename, ai_response)
+        prompt=f"Analyze the scene in this image as an intelligence officer and describe the situation in 1 sentence, use this description about the image: '{context}'")
+    logger.info("AI analysis for %s: %s", filename, ai_response)
     return ai_response
 
 
@@ -134,19 +134,19 @@ def ai_ask_question(filename: str, question: str):
     return ai_response
 
 
-def process_request(request: dict) -> bool:
-    if st.session_state['isLive']:
-        logger.info("Getting asset: for %s", request['title'])
+def process_request(request: dict, isLive: bool = False) -> bool:
+    if isLive:
+        logger.info("Capturing asset metadata: for %s", request['title'])
         # extract full filename from metadata
         baseUrl = "/".join(request["href"].split("/")[:-1])
         metaUrl = baseUrl + "/metadata.json"
-        logger.info("Base URL: %s \nMeta URL: %s", baseUrl, metaUrl)
+        logger.debug("Base URL: %s \nMeta URL: %s", baseUrl, metaUrl)
         r = httpx.get(metaUrl, timeout=10)
         if r.status_code != 200:
             logger.error("Failed to get metadata: %s", request["href"])
             return False
         metadata = r.json()
-        logger.info("Metadata: %s", metadata)
+        logger.debug("Metadata: %s", metadata)
         filename = metadata['File:FileName']
         r = httpx.get(baseUrl + f"/{filename}", timeout=10)
         if r.status_code != 200:
@@ -162,7 +162,7 @@ def process_request(request: dict) -> bool:
         shutil.copy(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}", f"{settings.MAPR_MOUNT}{settings.EDGE_REPLICATED_VOLUME}/{filename}")
 
     # Send message for copied asset
-    request["status"] = "fulfilled"
+    request["status"] = "responded"
     if streams.produce(settings.EDGE_STREAM, settings.REQUEST_TOPIC, [request]):
         logger.info("Request processed: %s", request['title'])
         return True
@@ -176,10 +176,9 @@ def start_volume_mirror():
 
     r = httpx.get(REST_URL, auth=(settings.MAPR_USER, settings.MAPR_PASSWORD), verify=False)
     if r.status_code == 200:
-        st.session_state["volume_mirror"] = 1
-        st.toast(f"Volume mirror started successfully.")
+        logger.info("Volume mirror started successfully.")
     else:
-        st.error(f"Failed to start volume mirror. Status code: {r.status_code}")
+        logger.error("Failed to start volume mirror. Status code: %s", r.status_code)
 
 
 def toggle_volume_mirror():
@@ -191,14 +190,13 @@ def toggle_volume_mirror():
 
     r = httpx.get(REST_URL, auth=(settings.MAPR_USER, settings.MAPR_PASSWORD), verify=False)
     if r.status_code == 200:
-        st.session_state["volume_mirror"] = 0 if toggle_action == "stop" else 1
-        st.toast(f"Volume mirror {toggle_action}ed successfully.")
+        logger.info("Volume mirror %sed successfully.", toggle_action)
     else:
-        st.error(f"Failed to {toggle_action} volume mirror. Status code: {r.status_code}")
+        logger.error("Failed to %s volume mirror. Status code: %s", toggle_action, r.status_code)
 
 
 def toggle_stream_replication(upstream: bool):
-    toggle_action = "resume" if st.session_state.get("stream_replication", False) else "pause"
+    toggle_action = "resume"
 
     logger.debug("Setting stream replication to: %s", toggle_action)
 
@@ -206,10 +204,10 @@ def toggle_stream_replication(upstream: bool):
 
     r = httpx.get(REST_URL, auth=(settings.MAPR_USER, settings.MAPR_PASSWORD), verify=False)
     if r.status_code == 200:
-        st.session_state["stream_replication"] = True if toggle_action == "resume" else False
-        st.toast(f"Stream replication {toggle_action}d successfully.")
+        logger.info("Stream replication %sd successfully.", toggle_action)
     else:
-        st.error(f"Failed to {toggle_action} stream replication. Status code: {r.status_code}")
+        logger.error("Failed to %s stream replication. Status code: %s", toggle_action, r.status_code)
+
 
 def stream_replication_status(stream: str):
     URL = f"{settings.REST_URL}/stream/replica/list?path={stream}"
@@ -219,7 +217,7 @@ def stream_replication_status(stream: str):
         logger.debug("Replicating: %s",r.json()['data'][0]['isUptodate'])
         return r.json()["data"][0].get("isUptodate", False)
     else:
-        logger.error(f"Failed to retrieve stream replication status. {r.text}")
+        logger.error("Failed to retrieve stream replication status. %s", r.text)
 
 
 def volume_mirror_status():
@@ -227,6 +225,6 @@ def volume_mirror_status():
     r = httpx.get(URL, auth=(settings.MAPR_USER, settings.MAPR_PASSWORD), verify=False)
     if r.status_code == 200 and r.json().get("status") == "OK":
         logger.debug(r.json())
-        st.session_state["volume_mirror"] = not r.json()["data"][0].get("mirrorstatus", "3") # mirrorstatus = 0 means success, 1 means failure
+        return not r.json()["data"][0].get("mirrorstatus", "3") # mirrorstatus = 0 means success, 1 means failure
     else:
-        st.error(f"Failed to retrieve volume mirror status. {r.text}")
+        logger.error("Failed to retrieve volume mirror status. %s", r.text)

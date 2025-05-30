@@ -38,7 +38,7 @@ def pipeline_to_broadcast(isLive: bool = False):
             i["service"] = "download"
             settings.HQ_TILES.append(i)
             # Run AI narration on the image
-            item["analysis"] = utils.ai_describe_image(filename)
+            item["analysis"] = utils.ai_describe_image(filename, item['description'])
             # Update the table with the analysis
             if iceberger.write(warehouse_path=f"{settings.MAPR_MOUNT}{settings.HQ_VOLUME}", namespace="hq", tablename="asset_table", records=[item]):
                 i = item.copy()
@@ -61,63 +61,50 @@ def request_listener():
         request = json.loads(msg)
         # process only pending requests
         if "status" in request and request["status"] == "requested":
-            logger.info("Received request: %s", request["title"])
-            request["created_at"] = datetime.now()
-            st.session_state["request_success"].append(request)
-            if utils.process_request(request):
-                request["created_at"] = datetime.now()
-                st.session_state["response_success"].append(request)
-                yield request
+            i = request.copy()
+            logger.info("Received request: %s", i["title"])
+            if utils.process_request(i, isLive=False):
+                i["service"] = "response"
+                settings.HQ_TILES.append(i)
+                yield i
             else:
-                st.error(f"Failed to process request for {request['title']}")
-                request["created_at"] = datetime.now()
-                st.session_state["response_fail"].append(request)
+                logger.error("Failed to process request for %s", i['title'])
+                settings.HQ_TILES.append(i)
         else:
             logger.info("Ignoring request: %s with status: %s", request["title"], request["status"])
 
-# EDGE SERVICES
 
+# EDGE SERVICES
 def asset_listener():
     for msg in streams.consume(settings.EDGE_STREAM, settings.ASSET_TOPIC):
         asset = json.loads(msg)
         logger.info("Received: %s", asset["title"])
-        asset["created_at"] = datetime.now()
-        st.session_state["asset_broadcast"].append(asset)
         logger.debug(asset)
         if iceberger.write(f"{settings.MAPR_MOUNT}{settings.EDGE_VOLUME}", "edge", "asset_table", [asset]): # type: ignore
             logger.debug(f"Asset notification saved: %s", asset['title'])
-            asset["created_at"] = datetime.now()
-            st.session_state["receive_success"].append(asset)
+            i = asset.copy()
+            i["service"] = "receive"
+            settings.EDGE_TILES.append(i)
             yield asset
         else:
-            st.error(f"Failed to save asset notification: {asset['title']}")
-            asset["created_at"] = datetime.now()
-            st.session_state["receive_fail"].append(asset)
-            logger.debug(f"Failed to save asset notification: %s", asset['title'])
+            logger.error("Failed to save asset notification: %s", asset['title'])
 
 
-def asset_request():
-    if not "selected_assets" in st.session_state: return
-    logger.debug(f"Requesting assets: {st.session_state['selected_assets']['selection']['rows']}")
-    for idx in st.session_state["selected_assets"]["selection"]["rows"]:
-        asset = st.session_state["asset_broadcast"][idx]
-        # Skip assets that are already requested
-        if "status" in asset and asset["status"] in ["fulfilled", "requested"]: continue
+def asset_request(asset: dict):
+    # Skip assets that are already requested
+    if "status" in asset and asset["status"] in ["fulfilled", "requested"]: return
+    logger.debug("Found asset to request: %s", asset["title"])
+    # Mark asset for retrieval
+    asset["status"] = "requested"
 
-        logger.debug("Found asset to request: %s", asset["title"])
-        # Mark asset for retrieval
-        asset["status"] = "requested"
-
-        if streams.produce(settings.EDGE_STREAM, settings.REQUEST_TOPIC, [asset]):
-            logger.debug("Requested: %s", asset)
-            asset["created_at"] = datetime.now()
-            st.session_state["request_success"].append(asset)
-            yield asset
-        else:
-            logger.error("Failed to request asset: %s", asset['title'])
-            st.error(f"Failed to request {asset['title']}")
-            asset["created_at"] = datetime.now()
-            st.session_state["request_fail"].append(asset)
+    if streams.produce(settings.EDGE_STREAM, settings.REQUEST_TOPIC, [asset]):
+        logger.debug("Requested: %s", asset)
+        i = asset.copy()
+        i["service"] = "request"
+        settings.EDGE_TILES.append(i)
+        return True
+    else:
+        logger.error("Failed to request asset: %s", asset['title'])
 
 
 def response_listener():
@@ -127,9 +114,7 @@ def response_listener():
             logger.debug("Fulfilled: %s", asset)
             # Mark complete
             asset["status"] = "completed"
-            asset["created_at"] = datetime.now()
-            st.session_state["response_success"].append(asset)
+            settings.EDGE_TILES.append(asset)
             yield asset
         else:
             logger.info("ignoring %s with status: %s", asset["title"], asset["status"])
-            logger.debug("Ignoring message: %s", asset)

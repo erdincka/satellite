@@ -40,6 +40,17 @@ EDGE_SERVICES = ["receive", "request", "response"]
 HQ_TILES = []
 EDGE_TILES = []
 
+BGCOLORS = {
+    "pipeline": "bg-sky-300",
+    "download": "bg-red-300",
+    "record": "bg-emerald-300",
+    "broadcast": "bg-green-300",
+    "request": "bg-amber-300",
+    "response": "bg-orange-300",
+    "receive": "bg-lime-300",
+    # "": "bg-stone-300",
+}
+
 # Configure logging
 
 # INSECURE REQUESTS ARE OK in Lab

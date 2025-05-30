@@ -1,50 +1,62 @@
-import asyncio
+import os
+from nicegui import ui, binding, app
 import logging
-import pandas as pd
-import streamlit as st
-import pages
+from pages import dashboard_tiles, logging_card, start_demo, toggle_debug
 import services
 import settings
 import utils
-
-st.set_page_config(page_title="Command and Control", layout="wide")
 
 # Configure logging.
 logging.basicConfig(level=logging.INFO, encoding="utf-8", format=f'%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 logger = logging.getLogger(__name__)
 
-# Initialize Streamlit session state variables.
-for op in services.HQ_SERVICES:
-    st.session_state.setdefault(f"{op}_success", [])
-    st.session_state.setdefault(f"{op}_fail", [])
-st.session_state.setdefault("data", pd.DataFrame())
+# catch-all exceptions
+app.on_exception(utils.gracefully_fail)
+
+feed_data = utils.load_data(live=False)
+logger.debug("Loaded %d assets", len(feed_data))
 
 
-def main():
-    st.header("Command Center")
+@ui.page('/')
+def index():
+    if "tile_remove" not in app.storage.user.keys(): app.storage.user["tile_remove"] = 10
+    if "debug" not in app.storage.user.keys(): app.storage.user["debug"] = False
+    app.storage.user['stream_replication'] = utils.stream_replication_status(settings.HQ_STREAM)
 
-    # Initialize the data to use in the app.
-    st.session_state["data"] = utils.load_data(st.session_state.get("isLive", False))
+    with ui.header(elevated=True).classes('items-center justify-between w-full'):
+        ui.label('Command & Control Center').classes('text-bold')
+        for svc in settings.HQ_SERVICES:
+            with ui.chip(svc.capitalize(), icon=''):
+                ui.badge(0, color='red').props('floating').bind_text_from(app.storage.user, svc)
+        ui.space()
+        ui.button("Start", on_click=start_demo, icon='play_circle').props('')
+        ui.icon('check_circle' if app.storage.user["stream_replication"] else 'priority_high', color="positive" if app.storage.user["stream_replication"] else "negative").tooltip('Stream replication status')
+        ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
+        ui.button(on_click=toggle_debug).props('flat color=white').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')
 
-    # App status bar
-    pages.hq_actionbar()
+    with ui.footer():
+        logging_card().classes(
+            "flex-grow shrink absolute sticky bottom-0 left-0 w-full opacity-50 hover:opacity-100"
+        )
 
-    # Run Services
-    st.button("Broadcast some messages to start the flow", on_click=services.publish_to_pipeline, type='primary', icon='📡')
-    with st.spinner("Downloading and broadcasting assets...", show_time=True):
-        pages.hq_broadcaster()
+    # Start the pipeline process
+    services.publish_to_pipeline(feed_data.to_dict(orient='records'))
+    logger.debug("Published assets: %d", len([ i for i in settings.HQ_TILES if i["service"] == "pipeline"]))
 
-    # pages.hq_responder()
-    # st.dataframe(st.session_state["data"].to_dict(orient="records"))
+    # Dashboard
+    with ui.grid(columns=5).classes("w-full"):
+        ui.timer(0.2, lambda: dashboard_tiles(settings.HQ_TILES))
 
-    with st.spinner("Building dashboard...", show_time=True):
-        pages.image_tiles()
-
-    with st.sidebar:
-        # Show counters for processed assets
-        pages.statusbar(services.HQ_SERVICES)
+    for item in services.request_listener():
+        logger.debug("Received %s", item)
 
 
-if __name__ == "__main__":
-    logger.info("Running in HQ mode")
-    main()
+if __name__ in {"__main__", "__mp_main__"}:
+    ui.run(
+    title=settings.TITLE,
+        dark=None,
+        storage_secret=settings.STORAGE_SECRET,
+        reload=True,
+        port=8501,
+        favicon="📡",
+    )
