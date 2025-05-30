@@ -62,15 +62,23 @@
 ### Install dependencies
 
 <!-- `pip install -r requirements.txt` -->
-`uv pip install -r requirements.txt`
+<!-- `uv pip install -r requirements.txt` -->
 
 #### Build and install mapr-streams client
 
-`CFLAGS=-I/opt/mapr/include LDFLAGS=-L/opt/mapr/lib uv pip install mapr-streams-python`
+<!-- `CFLAGS=-I/opt/mapr/include LDFLAGS=-L/opt/mapr/lib uv add mapr-streams-python` -->
+`uv add mapr-streams-python`
 
 ### Extract images if using offline files
 
 `mkdir -p images; tar -xf ./downloaded_images.tar -C images/`
+
+
+### Wait until container is ready
+
+Either watch for logs to print out `This container IP : 172.17.0.2` or /mapr mounted (inside the container): `ls /mapr`
+
+This may take around ~30 minutes.
 
 
 ### Login with your credentials (or use your own user & password)
@@ -107,11 +115,11 @@ sudo chown $(id -un):$(id -gn) -R /mapr/${CLUSTER_NAME}/apps/satellite/
 
 You need two terminal sessions to run the application. One for the HQ and one for the edge.
 
-`LD_LIBRARY_PATH=/opt/mapr/lib streamlit run hq.py`
+`LD_LIBRARY_PATH=/opt/mapr/lib uv run hq.py`
 
 and
 
-`LD_LIBRARY_PATH=/opt/mapr/lib streamlit run edge.py`
+`LD_LIBRARY_PATH=/opt/mapr/lib uv run edge.py`
 
 
 ## TODO
