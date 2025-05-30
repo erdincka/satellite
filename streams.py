@@ -43,7 +43,7 @@ def consume(stream: str, topic: str):
 
         while True:
             message = consumer.poll(timeout=MAX_POLL_TIME)
-
+            logger.debug(message)
             if message is None: raise EOFError
 
             if not message.error(): yield message.value().decode("utf-8")

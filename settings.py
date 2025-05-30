@@ -58,15 +58,11 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # reduce logs from these
-logging.getLogger("streams_handle_rd_kafka_assign").setLevel(logging.FATAL)
+# logging.getLogger("streams_handle_rd_kafka_assign").setLevel(logging.FATAL)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("requests").setLevel(logging.WARNING)
-
-logging.getLogger("watchfiles").setLevel(logging.FATAL)
-
-logging.getLogger("faker").setLevel(logging.FATAL)
 
 logging.getLogger("pyiceberg.io").setLevel(logging.WARNING)
 

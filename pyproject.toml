@@ -12,5 +12,8 @@ dependencies = [
     "mapr-streams-python>=2.6.0",
     "nicegui>=2.18.0",
     "openai>=1.82.0",
+    "pandas>=2.2.3",
+    "pyarrow>=20.0.0",
+    "pyiceberg>=0.9.1",
     "watchdog>=6.0.0",
 ]
