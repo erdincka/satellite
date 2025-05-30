@@ -60,11 +60,10 @@ def nasa_feed(isLive: bool, query: str = ""):
     logger.debug("Loading data, Live: %s, Query: %s", isLive, query)
     data = None
     if isLive:
-        with st.spinner("Using offline feed", show_time=True):
-            params = { "media_type": "image", "q": query}
-            r = httpx.get("https://images-api.nasa.gov/search", params=params)
-            if r.status_code == 200:
-                data = r.json()
+        params = { "media_type": "image", "q": query}
+        r = httpx.get("https://images-api.nasa.gov/search", params=params)
+        if r.status_code == 200:
+            data = r.json()
     else:
         with open("images.json", "r") as f:
             data = json.loads(f.read())
@@ -182,7 +181,7 @@ def start_volume_mirror():
 
 
 def toggle_volume_mirror():
-    toggle_action = "start" if st.session_state.get("volume_mirror", False) else "stop"
+    toggle_action = "start"
 
     logger.info("Setting volume mirror to: %s", toggle_action)
 

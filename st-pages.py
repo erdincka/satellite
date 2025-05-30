@@ -120,12 +120,13 @@ def hq_actionbar():
 def hq_broadcaster():
     # Publish some messages to the pipeline
     # st.button("Broadcast some messages to start the flow", on_click=services.publish_to_pipeline, type='primary', icon='📡')
-    services.publish_to_pipeline(random.randint(1,10))
+
+    # services.publish_to_pipeline(random.randint(1,10))
 
     # Process and broadcast messages in pipeline
     # image_tiles(generator=services.pipeline_to_broadcast, source='Broadcast', wait_message="Publishing assets...", columns=4, limit=0)
-    for _ in services.pipeline_to_broadcast(): pass # no need for the returning items
-    # st.write("HQ PROCESS TOPICS")
+    # for _ in services.pipeline_to_broadcast(): pass # no need for the returning items
+    st.write("HQ PROCESS TOPICS")
     # st.write("Pipeline")
     # st.dataframe(st.session_state["pipeline_success"][::-1])
     # st.write("Download")
@@ -217,8 +218,8 @@ def edge_requester():
     )
 
     # st.dataframe(st.session_state["selected_assets"])
-    for asset in services.asset_request():
-        st.toast("Asset requested: {}".format(asset['title']))
+    # for asset in services.asset_request():
+    #     st.toast("Asset requested: {}".format(asset['title']))
 
 
 @st.fragment

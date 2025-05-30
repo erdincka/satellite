@@ -27,7 +27,7 @@ def index():
         ui.label('Command & Control Center').classes('text-bold')
         for svc in settings.HQ_SERVICES:
             with ui.chip(svc.capitalize(), icon=''):
-                ui.badge(0, color='red').props('floating').bind_text_from(app.storage.user, svc)
+                ui.badge("0", color='red').props('floating').bind_text_from(app.storage.user, svc)
         ui.space()
         ui.button("Start", on_click=start_demo, icon='play_circle').props('')
         ui.icon('check_circle' if app.storage.user["stream_replication"] else 'priority_high', color="positive" if app.storage.user["stream_replication"] else "negative").tooltip('Stream replication status')
@@ -58,5 +58,5 @@ if __name__ in {"__main__", "__mp_main__"}:
         storage_secret=settings.STORAGE_SECRET,
         reload=True,
         port=8501,
-        favicon="📡",
+        favicon="🛰️",
     )

@@ -10,7 +10,7 @@ wheels/
 .venv
 
 images/
-nasa.json
+.nicegui
 
 # app artifacts
 *.db
