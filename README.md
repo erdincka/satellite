@@ -86,14 +86,6 @@ This may take around ~30 minutes.
 `echo mapr | maprlogin password -user mapr`
 
 
-<!-- ### Enable and mount NFS
-
-```bash
-mkdir -p /mapr
-mount -t nfs -o nolock,hard localhost:/mapr /mapr
-``` -->
-
-
 ### Create the volumes and streams on Data Fabric
 
 
@@ -107,7 +99,8 @@ maprcli volume create -path /apps/satellite/edge_replicated -name edge_replicate
 maprcli volume create -path /apps/satellite/edge/assets -name edge_assets -type mirror -source edge_replicated@${CLUSTER_NAME}
 maprcli stream create -path /apps/satellite/hq_stream -produceperm p -consumeperm p -topicperm p
 maprcli stream replica autosetup -path /apps/satellite/hq_stream -replica /apps/satellite/edge/edge_stream -multimaster true
-sudo chown $(id -un):$(id -gn) -R /mapr/${CLUSTER_NAME}/apps/satellite/
+mount -t nfs -o nolock,hard localhost:/mapr /mapr
+# sudo chown $(id -un):$(id -gn) -R /mapr/${CLUSTER_NAME}/apps/satellite/
 ```
 
 
