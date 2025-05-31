@@ -56,7 +56,7 @@
 
 `curl -LsSf https://astral.sh/uv/install.sh | sh; source ~/.bashrc`
 
-`uv venv .venv && source .venv/bin/activate`
+<!-- `uv venv .venv && source .venv/bin/activate` -->
 
 
 ### Install dependencies
