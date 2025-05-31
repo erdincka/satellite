@@ -53,6 +53,6 @@ if __name__ in {"__main__", "__mp_main__"}:
         dark=None,
         storage_secret=settings.STORAGE_SECRET,
         reload=True,
-        port=8502,
+        port=3001,
         favicon="📡", # 🪖
     )

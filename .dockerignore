@@ -10,8 +10,6 @@ wheels/
 # Virtual environments
 .venv
 
+# App artifacts
 images/
 .nicegui
-
-# app artifacts
-*.db

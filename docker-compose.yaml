@@ -9,10 +9,9 @@ services:
       - isSecure=true
       - MAPR_TZ=Europe/London
     ports:
-      - "8501:8501"
-      - "8502:8502"
+      - "3000:3000"
+      - "3001:3001"
       - "8443:8443"
-      - "9000:9000"
       - "2222:22"
     cap_add:
       - SYS_ADMIN

@@ -2,31 +2,91 @@
 
 ## Installation
 
+<!-- ### Serve LLM locally (skip if you plan to use the PCAI model)
+
+#### Install packages -->
+
+<!-- `brew install llama.cpp`
+
+
+#### Run Server
+
+`./llama-server -hf google/gemma-3-4b-it-qat-q4_0-gguf:Q4_0`
+
+#### Test
+
+`curl -X POST "http://localhost:8080/v1/completions" \
+	-H "Content-Type: application/json" \
+	--data '{
+		"model": "google/gemma-3-4b-it-qat-q4_0-gguf:Q4_0",
+		"prompt": "Once upon a time,",
+		"max_tokens": 512,
+		"temperature": 0.5
+	}'
+` -->
+
+
 ## Configure the sandbox container
-
-- Download the docker-compose.yaml file
-
-`curl -o docker-compose.yaml https://raw.githubusercontent.com/erdincka/satellite/main/docker-compose.yaml`
-
 
 - Start the sandbox container
 
-`docker compose up -d`
+`docker run -d --name mapr --privileged -p 8443:8443 -p 8501:8501 -p 8502:8502 -p 9000:9000 -p 2222:22 -e clusterName=maprdemo.io -e isSecure -e MAPR_TZ=Europe/London --hostname maprdemo.io maprtech/dev-sandbox-container`
+
+- Login to the container
+
+`docker exec -it mapr bash`
+
+### Install git
+
+`apt update && apt install -y git python3-dev gcc`
+
+*TIP* Save git credentials: `git config --global credentials.helper store`
+
+### Clone the repository
+
+`git clone https://github.com/erdincka/satellite.git`
 
 
-### Wait for container to be ready
+### Navigate to the project directory
 
-Run `docker logs -f satellite`
+`cd satellite`
 
-Watch for output like `This container IP : 172.x.0.2`
+
+### Create and Activate venv
+
+`curl -LsSf https://astral.sh/uv/install.sh | sh; source ~/.bashrc`
+
+<!-- `uv venv .venv && source .venv/bin/activate` -->
+
+
+### Install dependencies
+
+<!-- `pip install -r requirements.txt` -->
+<!-- `uv pip install -r requirements.txt` -->
+
+#### Build and install mapr-streams client
+
+<!-- `CFLAGS=-I/opt/mapr/include LDFLAGS=-L/opt/mapr/lib uv add mapr-streams-python` -->
+`uv add mapr-streams-python`
+
+### Extract images if using offline files
+
+`mkdir -p images; tar -xf ./downloaded_images.tar -C images/`
+
+
+### Wait until container is ready
+
+Either watch for logs to print out `This container IP : 172.17.0.2` or /mapr mounted (inside the container): `ls /mapr`
 
 This may take around ~30 minutes.
 
 
-## Start the application
+### Login with your credentials (or use your own user & password)
 
-For the HQ: `docker exec -it satellite bash -c "LD_LIBRARY_PATH=/opt/mapr/lib ~/.local/bin/uv run hq.py"`
-For the Edge: `docker exec -it satellite bash -c "LD_LIBRARY_PATH=/opt/mapr/lib ~/.local/bin/uv run edge.py"`
+`echo mapr | maprlogin password -user mapr`
+
+
+### Create the volumes and streams on Data Fabric
 
 
 ```bash

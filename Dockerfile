@@ -9,7 +9,7 @@ ENV LD_LIBRARY_PATH=/opt/mapr/lib
 ENV CFLAGS=-I/opt/mapr/include
 ENV LDFLAGS=-L/opt/mapr/lib
 
-EXPOSE 8443 8501 8502 9000 2222
+EXPOSE 8443 3000 3001 2222
 
 COPY . /app
 WORKDIR /app
