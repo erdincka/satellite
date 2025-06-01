@@ -4,17 +4,18 @@ import openai
 import base64
 import logging
 
+import settings
+
 logger = logging.getLogger(__name__)
 
 # TODO: use parameters or env vars
-base_url = "http://host.docker.internal:8080/v1"
-model = "gpt-4-vision-preview"
+
 # model = "google/gemma-3-4b-it-qat-q4_0-gguf:Q4_0"
 # base_url = 'http://host.docker.internal:11434/v1'
 # model = 'gemma3:27b-it-qat'
 
 client = OpenAI(
-    base_url = base_url,
+    base_url = settings.AI_HOST,
     api_key = "llama.cpp" # required, but unused
 )
 
@@ -28,7 +29,7 @@ def image_query(image_b64: str|None, prompt: str = "describe the image"):
 
         response = client.chat.completions.create(
         # response = client.completions.create(
-            model=model,
+            model=settings.AI_MODEL,
             # prompt=f"You are a world class image analyzer. Follow the prompts given by the user: {prompt}",
             # temperature=0.5,
             max_tokens=512,
