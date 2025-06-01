@@ -1,5 +1,5 @@
 import os
-from nicegui import ui, binding, app
+from nicegui import ui, app
 import logging
 from pages import dashboard_tiles, logging_card, start_demo, toggle_debug
 import services
@@ -16,20 +16,22 @@ app.on_exception(utils.gracefully_fail)
 feed_data = utils.load_data(live=False)
 logger.debug("Loaded %d assets", len(feed_data))
 
+app.storage.general["ready"] = False
 
 @ui.page('/')
 def index():
     if "tile_remove" not in app.storage.user.keys(): app.storage.user["tile_remove"] = 10
     if "debug" not in app.storage.user.keys(): app.storage.user["debug"] = False
+
     app.storage.user['stream_replication'] = utils.stream_replication_status(settings.HQ_STREAM)
 
     with ui.header(elevated=True).classes('items-center justify-between w-full'):
         ui.label('Command & Control Center').classes('text-bold')
         for svc in settings.HQ_SERVICES:
-            with ui.chip(svc.capitalize(), icon=''):
+            with ui.chip(svc.upper(), icon=''):
                 ui.badge("0", color='red').props('floating').bind_text_from(app.storage.user, svc)
         ui.space()
-        ui.button("Start", on_click=start_demo, icon='play_circle').props('')
+        ui.button("Start", on_click=start_demo, icon='play_circle').props('').bind_visibility_from(app.storage.user, 'ready')
         ui.icon('check_circle' if app.storage.user["stream_replication"] else 'priority_high', color="positive" if app.storage.user["stream_replication"] else "negative").tooltip('Stream replication status')
         ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
         ui.button(on_click=toggle_debug).props('flat color=white').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')

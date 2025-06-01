@@ -22,6 +22,13 @@ Watch for output like `This container IP : 172.x.0.2`
 
 This may take around ~30 minutes.
 
+#### Fix init script
+
+Wait for CLDB to be ready. Wait for "after cldb (DATE)" to appear in the logs.
+
+Create the ticket for authtication.
+
+`docker exec -it satellite bash -c "echo mapr | maprlogin password -user mapr"`
 
 ## Start the application
 
@@ -59,13 +66,13 @@ and
 
 A lot
 
-- Point to remote (PCAI) LLM
+[ ] Point to remote (PCAI) LLM
 
-- Set up and reset of demo volumes and streams
+[ ] UI to set up and reset of demo volumes and streams
 
-- Containerize the whole demo app
+[X] Containerize the whole demo app
 
-- Allow using external DF cluster(s)
+[ ] Allow using external DF cluster(s)
 
 
 ## NOTES

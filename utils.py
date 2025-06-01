@@ -211,12 +211,17 @@ def toggle_stream_replication(upstream: bool):
 def stream_replication_status(stream: str):
     URL = f"{settings.REST_URL}/stream/replica/list?path={stream}"
     logger.debug("Checking replication for: %s",stream)
-    r = httpx.get(URL, auth=(settings.MAPR_USER, settings.MAPR_PASSWORD), verify=False)
-    if r.status_code == 200 and r.json().get("status") == "OK":
-        logger.debug("Replicating: %s",r.json()['data'][0]['isUptodate'])
-        return r.json()["data"][0].get("isUptodate", False)
-    else:
-        logger.error("Failed to retrieve stream replication status. %s", r.text)
+    try:
+        r = httpx.get(URL, auth=(settings.MAPR_USER, settings.MAPR_PASSWORD), verify=False)
+        if r.status_code == 200 and r.json().get("status") == "OK":
+            logger.debug("Replicating: %s",r.json()['data'][0]['isUptodate'])
+            return r.json()["data"][0].get("isUptodate", False)
+        else:
+            logger.error("Failed to retrieve stream replication status. %s", r.text)
+    except Exception as e:
+        logger.error("Failed to retrieve stream replication status. %s", e)
+    finally:
+        return False
 
 
 def volume_mirror_status():
