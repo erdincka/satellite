@@ -36,7 +36,7 @@ def logging_card():
 
 # Image dialog
 def show_asset(asset: dict):
-    with ui.dialog().props("") as show, ui.card().classes("grow").props("animated fadeIn fadeOut"):
+    with ui.dialog().props("") as show, ui.card().classes("grow"):
         ui.label(f"Asset: {asset['title']}").classes("w-full text-wrap")
         ui.space()
         ui.label(f"Description: {asset['description']}").classes("w-full text-wrap")

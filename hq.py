@@ -2,6 +2,7 @@ import os
 from nicegui import ui, app
 import logging
 from pages import dashboard_tiles, logging_card, start_demo, toggle_debug
+import pages
 import services
 import settings
 import utils
@@ -16,17 +17,23 @@ app.on_exception(utils.gracefully_fail)
 feed_data = utils.load_data(live=False)
 logger.debug("Loaded %d assets", len(feed_data))
 
-# app.storage.general["ready"] = False
+def update_ai_endpoint():
+    with ui.dialog() as dialog,  ui.card():
+        ui.input("Endpoint", placeholder="Enter your AI endpoint...").bind_value(app.storage.general, "AI_ENDPOINT")
+        ui.input("Model Name", placeholder="Enter your AI model name...").bind_value(app.storage.general, "AI_MODEL")
+        ui.button("OK", on_click=dialog.close).props("primary")
+    dialog.on("close", dialog.clear)
+    dialog.open()
+
 
 @ui.page('/')
 def index():
     if "tile_remove" not in app.storage.user.keys(): app.storage.user["tile_remove"] = 10
     if "debug" not in app.storage.user.keys(): app.storage.user["debug"] = False
-
+    # Initialize settings
     app.storage.user['stream_replication'] = utils.stream_replication_status(settings.HQ_STREAM)
     # MapR streams are links to tables, so we can check if the link exists
     app.storage.general['ready'] = os.path.islink(settings.MAPR_MOUNT + settings.HQ_STREAM)
-    
 
     logger.debug("App configured: %s", app.storage.general['ready'])
 
@@ -36,16 +43,18 @@ def index():
             with ui.chip(svc.upper(), icon=''):
                 ui.badge("0", color='red').props('floating').bind_text_from(app.storage.user, svc)
         ui.space()
-        ui.button("Start", on_click=start_demo, icon='play_circle').props('').bind_visibility_from(app.storage.general, 'ready')
+        ui.button("Start", on_click=start_demo, icon='play_circle').bind_visibility_from(app.storage.general, 'ready')
+        ui.button(on_click=utils.configure_app).props('flat color=red').bind_icon_from(app.storage.general, 'ready', backward=lambda x: 'link' if x else 'link_off').tooltip('App ready?').bind_visibility_from(app.storage.general, 'ready', backward=lambda x: not x)
         ui.icon('check_circle' if app.storage.user["stream_replication"] else 'priority_high', color="positive" if app.storage.user["stream_replication"] else "negative").tooltip('Stream replication status')
         ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
         ui.button(on_click=toggle_debug).props('flat color=white').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')
 
     with ui.footer():
-        ui.button(on_click=utils.configure_app).props('flat color=red').bind_icon_from(app.storage.general, 'ready', backward=lambda x: 'link' if x else 'link_off').tooltip('App ready?').bind_visibility_from(app.storage.general, 'ready', backward=lambda x: not x)
+        ui.label().bind_text_from(app.storage.general, "AI_MODEL")
+        ui.label("@").classes("align-middle")
+        ui.button(on_click=update_ai_endpoint, icon="edit").bind_text_from(app.storage.general, "AI_ENDPOINT").tooltip('Change VLM')
         ui.button("Mount point", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
         ui.button("HQ Volume", on_click=lambda: utils.run_command_with_dialog(f"tree {settings.MAPR_MOUNT}{settings.HQ_VOLUME}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
-        ui.label().bind_text_from(app.storage.general, "ready").classes("text-bold text-red")
         logging_card().classes(
             "flex-grow shrink absolute sticky bottom-0 left-0 w-full opacity-50 hover:opacity-100"
         ).bind_visibility_from(app.storage.user, "debug")

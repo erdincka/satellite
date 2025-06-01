@@ -32,9 +32,6 @@ REQUEST_TOPIC = "requests"
 
 MAPR_MOUNT = f"/mapr/{MAPR_CLUSTER}"
 
-AI_HOST = "http://host.docker.internal:8080/v1"
-AI_MODEL = "gpt-4-vision-preview"
-
 # Application settings
 HQ_SERVICES = ["pipeline", "download", "record", "broadcast", "request", "response"]
 EDGE_SERVICES = ["receive", "request", "response"]

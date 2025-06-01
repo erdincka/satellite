@@ -1,3 +1,4 @@
+from nicegui import app
 from openai import OpenAI
 import sys
 import openai
@@ -8,14 +9,14 @@ import settings
 
 logger = logging.getLogger(__name__)
 
-# TODO: use parameters or env vars
-
+base_url = app.storage.general.get("AI_ENDPOINT", "http://localhost:8080/v1")
+model = app.storage.general.get("AI_MODEL", "gpt-4-vision-preview")
 # model = "google/gemma-3-4b-it-qat-q4_0-gguf:Q4_0"
 # base_url = 'http://host.docker.internal:11434/v1'
 # model = 'gemma3:27b-it-qat'
 
 client = OpenAI(
-    base_url = settings.AI_HOST,
+    base_url = base_url,
     api_key = "llama.cpp" # required, but unused
 )
 
@@ -23,13 +24,16 @@ client = OpenAI(
 def image_query(image_b64: str|None, prompt: str = "describe the image"):
     if not image_b64: return
 
-    global model, endpoint
+    global model
+
+    logger.debug("Using VLM at %s", base_url)
+    logger.debug("VLM Model: %s", model)
 
     try:
 
         response = client.chat.completions.create(
         # response = client.completions.create(
-            model=settings.AI_MODEL,
+            model=model,
             # prompt=f"You are a world class image analyzer. Follow the prompts given by the user: {prompt}",
             # temperature=0.5,
             max_tokens=512,

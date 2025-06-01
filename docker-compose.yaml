@@ -15,5 +15,3 @@ services:
         cap_add:
             - SYS_ADMIN
         privileged: true
-        volumes:
-            - .:/app
