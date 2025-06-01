@@ -9,9 +9,6 @@ logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 CONSUMER_GROUP= "app-consumer"
-consumer = Consumer(
-    {"group.id": CONSUMER_GROUP, "default.topic.config": {"auto.offset.reset": "earliest"}}
-)
 
 def produce(stream: str, topic: str, messages: list[dict]):
     p = Producer({"streams.producer.default.stream": stream})
@@ -33,6 +30,9 @@ def produce(stream: str, topic: str, messages: list[dict]):
 
 
 def consume(stream: str, topic: str):
+    consumer = Consumer(
+        {"group.id": CONSUMER_GROUP, "default.topic.config": {"auto.offset.reset": "earliest"}}
+    )
 
     logger.debug("Consuming from stream: %s:%s", stream, topic)
     MAX_POLL_TIME = 2

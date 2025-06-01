@@ -24,9 +24,7 @@ This may take around ~30 minutes.
 
 #### Fix init script
 
-Wait for CLDB to be ready. Wait for "after cldb (DATE)" to appear in the logs.
-
-Create the ticket for authtication.
+If you are stuck at "after cldb (DATE)" for more than a minute, run the following to continue with the script.
 
 `docker exec -it satellite bash -c "echo mapr | maprlogin password -user mapr"`
 
@@ -34,32 +32,6 @@ Create the ticket for authtication.
 
 For the HQ: `docker exec -it satellite bash -c "LD_LIBRARY_PATH=/opt/mapr/lib ~/.local/bin/uv run hq.py"`
 For the Edge: `docker exec -it satellite bash -c "LD_LIBRARY_PATH=/opt/mapr/lib ~/.local/bin/uv run edge.py"`
-
-
-```bash
-CLUSTER_NAME=$(cat /opt/mapr/conf/mapr-clusters.conf | head -n 1 | awk '{print $1}')
-echo "Cluster Name: ${CLUSTER_NAME}"
-maprcli volume create -path /apps/satellite -name satellite
-maprcli volume create -path /apps/satellite/assets -name hq_assets
-maprcli volume create -path /apps/satellite/edge -name edge
-maprcli volume create -path /apps/satellite/edge_replicated -name edge_replicated
-maprcli volume create -path /apps/satellite/edge/assets -name edge_assets -type mirror -source edge_replicated@${CLUSTER_NAME}
-maprcli stream create -path /apps/satellite/hq_stream -produceperm p -consumeperm p -topicperm p
-maprcli stream replica autosetup -path /apps/satellite/hq_stream -replica /apps/satellite/edge/edge_stream -multimaster true
-mount -t nfs -o nolock,hard localhost:/mapr /mapr
-# sudo chown $(id -un):$(id -gn) -R /mapr/${CLUSTER_NAME}/apps/satellite/
-```
-
-
-### Run the application
-
-You need two terminal sessions to run the application. One for the HQ and one for the edge.
-
-`LD_LIBRARY_PATH=/opt/mapr/lib uv run hq.py`
-
-and
-
-`LD_LIBRARY_PATH=/opt/mapr/lib uv run edge.py`
 
 
 ## TODO
@@ -92,6 +64,22 @@ Restart the NFSv4 server:
 `sudo mount -t nfs4 -o proto=tcp,nolock,sec=sys localhost:/mapr /mapr`
 
 
+### Manually configure the App volumes & streams
+
+```bash
+CLUSTER_NAME=$(cat /opt/mapr/conf/mapr-clusters.conf | head -n 1 | awk '{print $1}')
+echo "Cluster Name: ${CLUSTER_NAME}"
+maprcli volume create -path /apps/satellite -name satellite
+maprcli volume create -path /apps/satellite/assets -name hq_assets
+maprcli volume create -path /apps/satellite/edge -name edge
+maprcli volume create -path /apps/satellite/edge_replicated -name edge_replicated
+maprcli volume create -path /apps/satellite/edge/assets -name edge_assets -type mirror -source edge_replicated@${CLUSTER_NAME}
+maprcli stream create -path /apps/satellite/hq_stream -produceperm p -consumeperm p -topicperm p
+maprcli stream replica autosetup -path /apps/satellite/hq_stream -replica /apps/satellite/edge/edge_stream -multimaster true
+mount -t nfs -o nolock,hard localhost:/mapr /mapr
+# sudo chown $(id -un):$(id -gn) -R /mapr/${CLUSTER_NAME}/apps/satellite/
+```
+
 
 ## RESET
 
@@ -104,6 +92,17 @@ maprcli volume remove -name edge -force true
 maprcli volume remove -name hq_assets -force true
 maprcli volume remove -name satellite -force true
 ```
+
+## Run the application inside the container
+
+You need two terminal sessions to run the application. One for the HQ and one for the edge.
+
+`LD_LIBRARY_PATH=/opt/mapr/lib uv run hq.py`
+
+and
+
+`LD_LIBRARY_PATH=/opt/mapr/lib uv run edge.py`
+
 
 ## Contributing
 

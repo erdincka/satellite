@@ -14,3 +14,4 @@ images/
 
 # app artifacts
 *.db
+derby.log

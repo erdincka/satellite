@@ -1,18 +1,19 @@
-
 services:
-  satellite:
-    platform: linux/amd64
-    image: erdincka/satellite:latest
-    container_name: satellite
-    environment:
-      - clusterName=maprdemo.io
-      - isSecure=true
-      - MAPR_TZ=Europe/London
-    ports:
-      - "3000:3000"
-      - "3001:3001"
-      - "8443:8443"
-      - "2222:22"
-    cap_add:
-      - SYS_ADMIN
-    privileged: true
+    satellite:
+        platform: linux/amd64
+        image: erdincka/satellite:latest
+        container_name: satellite
+        environment:
+            - clusterName=maprdemo.io
+            - isSecure=true
+            - MAPR_TZ=Europe/London
+        ports:
+            - "3000:3000"
+            - "3001:3001"
+            - "8443:8443"
+            - "2222:22"
+        cap_add:
+            - SYS_ADMIN
+        privileged: true
+        volumes:
+            - .:/app

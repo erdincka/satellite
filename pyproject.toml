@@ -15,5 +15,6 @@ dependencies = [
     "pandas>=2.2.3",
     "pyarrow>=20.0.0",
     "pyiceberg>=0.9.1",
+    "sqlalchemy>=2.0.41",
     "watchdog>=6.0.0",
 ]

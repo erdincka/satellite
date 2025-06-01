@@ -13,7 +13,6 @@ EXPOSE 8443 3000 3001 2222
 
 COPY . /app
 WORKDIR /app
-RUN mkdir -p images; tar -xf ./downloaded_images.tar -C images/
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 RUN . $HOME/.local/bin/env && uv add mapr-streams-python

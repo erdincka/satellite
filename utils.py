@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import textwrap
 import httpx
 import pandas as pd
 import logging
@@ -9,6 +10,8 @@ import streams
 import aiclient
 import base64
 from nicegui import ui
+import asyncio
+
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,51 @@ class LogElementHandler(logging.Handler):
 def gracefully_fail(exc: Exception):
     print("gracefully failing...")
     logger.exception(exc)
+
+
+async def configure_app():
+    async for out in run_command("/bin/bash -c ./configure-app.sh"):
+        logger.info(out.strip())
+
+
+async def run_command_with_dialog(command: str) -> None:
+    """
+    Run a command in the background and display the output in the pre-created dialog.
+    """
+
+    with ui.dialog().props("full-width") as dialog, ui.card().classes("grow relative"):
+        ui.button(icon="close", on_click=dialog.close).props("flat round dense").classes("absolute right-2 top-2")
+        ui.label(f"Running: {textwrap.shorten(command, width=80)}").classes("text-bold")
+        result = ui.log().classes("w-full mt-2").style("white-space: pre-wrap")
+
+    dialog.on("close", lambda d=dialog: d.delete())
+    dialog.open()
+
+    result.content = ''
+
+    async for out in run_command(command): result.push(out)
+
+
+async def run_command(command: str):
+    """
+    Run a command in the background and return the output.
+    """
+
+    process = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+        cwd=os.path.dirname(os.path.abspath(__file__))
+    )
+
+    # NOTE we need to read the output in chunks, otherwise the process will block
+    while True:
+        new = await process.stdout.read(4096) # pyright: ignore
+        if not new:
+            break
+        yield new.decode()
+
+    yield "Done."
+    logger.debug(f"Finished: {command}")
 
 
 def load_data(live: bool = True):
