@@ -1,6 +1,7 @@
 FROM --platform=linux/amd64 maprtech/dev-sandbox-container:latest
 
-RUN apt update && apt install -y git python3-dev gcc
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update && apt install -y git python3-dev gcc tree
 
 # fix init-script
 RUN sed -i '/after cldb /a         sleep 30; echo mapr | maprlogin password -user mapr' /usr/bin/init-script

@@ -47,11 +47,6 @@ def gracefully_fail(exc: Exception):
     logger.exception(exc)
 
 
-async def configure_app():
-    async for out in run_command("/bin/bash -c ./configure-app.sh"):
-        logger.info(out.strip())
-
-
 async def run_command_with_dialog(command: str) -> None:
     """
     Run a command in the background and display the output in the pre-created dialog.
@@ -62,10 +57,10 @@ async def run_command_with_dialog(command: str) -> None:
         ui.label(f"Running: {textwrap.shorten(command, width=80)}").classes("text-bold")
         result = ui.log().classes("w-full mt-2").style("white-space: pre-wrap")
 
-    dialog.on("close", lambda d=dialog: d.delete())
+    dialog.on("close", lambda d=dialog: d.delete()) # pyright: ignore
     dialog.open()
 
-    result.content = ''
+    result.content = '' # pyright: ignore
 
     async for out in run_command(command): result.push(out)
 
@@ -262,13 +257,13 @@ def stream_replication_status(stream: str):
     try:
         r = httpx.get(URL, auth=(settings.MAPR_USER, settings.MAPR_PASSWORD), verify=False)
         if r.status_code == 200 and r.json().get("status") == "OK":
-            logger.debug("Replicating: %s",r.json()['data'][0]['isUptodate'])
-            return r.json()["data"][0].get("isUptodate", False)
+            uptodate = r.json()['data'][0]['isUptodate']
+            logger.info("Replicating: %s", uptodate)
+            return uptodate
         else:
             logger.error("Failed to retrieve stream replication status. %s", r.text)
     except Exception as e:
         logger.error("Failed to retrieve stream replication status. %s", e)
-    finally:
         return False
 
 

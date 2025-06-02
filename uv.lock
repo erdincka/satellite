@@ -1010,6 +1010,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/67/69/c0087d19c8d8e8530acee3ba485d54aedeebf2963784a16692ca4b439566/pyiceberg-0.9.1-cp312-cp312-win_amd64.whl", hash = "sha256:124793c54a0c2fb5ac4ab19c38da116c068e277c85cbaa7e4064e635a70b595e", size = 595512, upload-time = "2025-04-30T14:59:14.464Z" },
 ]
 
+[package.optional-dependencies]
+sql-sqlite = [
+    { name = "sqlalchemy" },
+]
+
 [[package]]
 name = "pyparsing"
 version = "3.2.3"
@@ -1153,7 +1158,7 @@ dependencies = [
     { name = "openai" },
     { name = "pandas" },
     { name = "pyarrow" },
-    { name = "pyiceberg" },
+    { name = "pyiceberg", extra = ["sql-sqlite"] },
     { name = "sqlalchemy" },
     { name = "watchdog" },
 ]
@@ -1166,7 +1171,7 @@ requires-dist = [
     { name = "openai", specifier = ">=1.82.0" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "pyarrow", specifier = ">=20.0.0" },
-    { name = "pyiceberg", specifier = ">=0.9.1" },
+    { name = "pyiceberg", extras = ["sql-sqlite"], specifier = ">=0.9.1" },
     { name = "sqlalchemy", specifier = ">=2.0.41" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]

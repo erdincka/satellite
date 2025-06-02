@@ -24,7 +24,7 @@ def get_catalog(warehouse_path: str):
     try:
         from pyiceberg.catalog.sql import SqlCatalog
 
-        logger.debug("Creating catalog: %s", f"sqlite://{warehouse_path}/iceberg.db")
+        logger.debug("Creating catalog: %s", f"sqlite:///{warehouse_path}/iceberg.db")
         catalog = SqlCatalog(
             "default",
             **{
@@ -55,12 +55,16 @@ def write(warehouse_path: str, namespace: str, tablename: str, records: list) ->
 
     catalog = get_catalog(warehouse_path)
 
+    logger.debug("Retrieving catalog: %s", catalog)
+
     if catalog is not None:
         # Create namespace if missing
         if (namespace,) not in catalog.list_namespaces():
+            logger.debug("Creating namespace: %s", namespace)
             catalog.create_namespace(namespace)
 
         tbl = pa.Table.from_pandas(pd.DataFrame.from_records(records))
+        logger.debug("Got table: %s", tbl)
 
         try:
             # Create table if missing
@@ -73,6 +77,7 @@ def write(warehouse_path: str, namespace: str, tablename: str, records: list) ->
             if not isinstance(error, TableAlreadyExistsError): logger.error(error)
             try:
                 t = catalog.load_table(f"{namespace}.{tablename}")
+                logger.debug("Loaded table: %s", t)
             except Exception as error:
                 logger.error(error)
                 return False

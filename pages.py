@@ -15,9 +15,27 @@ def toggle_debug():
     logger.info("Debug mode %s", app.storage.user["debug"])
 
 
+def update_ai_endpoint():
+    with ui.dialog() as dialog,  ui.card():
+        ui.input("Endpoint", placeholder="Enter your AI endpoint...").bind_value(app.storage.general, "AI_ENDPOINT")
+        ui.input("Model Name", placeholder="Enter your AI model name...").bind_value(app.storage.general, "AI_MODEL")
+        ui.button("OK", on_click=dialog.close).props("primary")
+    dialog.on("close", dialog.clear)
+    dialog.open()
+
+
 async def start_demo():
+    app.storage.general["working"] = True
     await run.io_bound(services.pipeline_to_broadcast, isLive=False)
     logger.debug("After broadcast: %d", len(settings.HQ_TILES))
+    app.storage.general["working"] = False
+
+
+async def configure_app():
+    app.storage.general["working"] = True
+    async for out in utils.run_command("/bin/bash -c ./configure-app.sh"):
+        logger.info(out.strip())
+    app.storage.general["working"] = False
 
 
 def logging_card():
@@ -36,7 +54,7 @@ def logging_card():
 
 # Image dialog
 def show_asset(asset: dict):
-    with ui.dialog().props("") as show, ui.card().classes("grow").props("animated fadeIn fadeOut"):
+    with ui.dialog().props("") as show, ui.card().classes("grow"):
         ui.label(f"Asset: {asset['title']}").classes("w-full text-wrap")
         ui.space()
         ui.label(f"Description: {asset['description']}").classes("w-full text-wrap")

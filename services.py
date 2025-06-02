@@ -39,14 +39,18 @@ def pipeline_to_broadcast(isLive: bool = False):
             # Run AI narration on the image
             item["analysis"] = utils.ai_describe_image(filename, item['description'])
             # Update the table with the analysis
+            logger.debug("Updating table with analysis: %s", item['analysis'])
             if iceberger.write(warehouse_path=f"{settings.MAPR_MOUNT}{settings.HQ_VOLUME}", namespace="hq", tablename="asset_table", records=[item]):
+                logger.debug("Updated table with analysis: %s", item['analysis'])
                 i = item.copy()
                 i["service"] = "record"
                 settings.HQ_TILES.append(i)
+                logger.debug("Notifying broadcast: %s", i['title'])
                 if streams.produce(stream=settings.HQ_STREAM, topic=settings.ASSET_TOPIC, messages=[item]):
                     i = item.copy()
                     i["service"] = "broadcast"
                     settings.HQ_TILES.append(i)
+                    logger.debug("Broadcasted: %s", i['title'])
                 else:
                     logger.error("Failed to broadcast: %s", item['title'])
             else:
