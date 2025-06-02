@@ -3,10 +3,16 @@ services:
         platform: linux/amd64
         image: erdincka/satellite:latest
         container_name: satellite
+        restart: unless-stopped
         environment:
             - clusterName=maprdemo.io
             - isSecure=true
             - MAPR_TZ=Europe/London
+            - TZ=Europe/London
+            - UV_ENV_FILE=.env
+            - LD_LIBRARY_PATH=/opt/mapr/lib
+            - CFLAGS=-I/opt/mapr/include
+            - LDFLAGS=-L/opt/mapr/lib
         ports:
             - "3000:3000"
             - "3001:3001"
@@ -16,4 +22,5 @@ services:
             - SYS_ADMIN
         privileged: true
         volumes:
-            - .:/app
+          - /etc/timezone:/etc/timezone:ro
+          - /etc/localtime:/etc/localtime:ro

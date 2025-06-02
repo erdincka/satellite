@@ -2,12 +2,8 @@ FROM --platform=linux/amd64 maprtech/dev-sandbox-container:latest
 
 RUN apt update && apt install -y git python3-dev gcc
 
-ENV clusterName=maprdemo.io
-ENV isSecure=true
-ENV MAPR_TZ=Europe/London
-ENV LD_LIBRARY_PATH=/opt/mapr/lib
-ENV CFLAGS=-I/opt/mapr/include
-ENV LDFLAGS=-L/opt/mapr/lib
+# fix init-script
+RUN sed -i '/after cldb /a         sleep 30; echo mapr | maprlogin password -user mapr' /usr/bin/init-script
 
 EXPOSE 8443 3000 3001 2222
 
