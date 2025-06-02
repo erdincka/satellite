@@ -8,19 +8,11 @@ import settings
 import utils
 
 # Configure logging.
-logging.basicConfig(level=logging.INFO, encoding="utf-8", format=f'%(asctime)s:%(levelname)s:%(pathname)s:%(lineno)d:%(message)s')
+logging.basicConfig(level=logging.DEBUG, encoding="utf-8", format=f'%(asctime)s:%(levelname)s:%(pathname)s:%(lineno)d:%(message)s')
 logger = logging.getLogger(__name__)
 
 # catch-all exceptions
 app.on_exception(utils.gracefully_fail)
-
-def update_ai_endpoint():
-    with ui.dialog() as dialog,  ui.card():
-        ui.input("Endpoint", placeholder="Enter your AI endpoint...").bind_value(app.storage.general, "AI_ENDPOINT")
-        ui.input("Model Name", placeholder="Enter your AI model name...").bind_value(app.storage.general, "AI_MODEL")
-        ui.button("OK", on_click=dialog.close).props("primary")
-    dialog.on("close", dialog.clear)
-    dialog.open()
 
 
 @ui.page('/')
@@ -48,11 +40,12 @@ def index():
         ui.icon('check_circle' if app.storage.user["stream_replication"] else 'priority_high', color="positive" if app.storage.user["stream_replication"] else "negative").tooltip('Stream replication status')
         ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
         ui.button(on_click=toggle_debug).props('flat color=white').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')
+        ui.spinner(color='red').bind_visibility_from(app.storage.general, 'working')
 
     with ui.footer():
         ui.label().bind_text_from(app.storage.general, "AI_MODEL")
         ui.label("@").classes("align-middle")
-        ui.button(on_click=update_ai_endpoint, icon="edit").bind_text_from(app.storage.general, "AI_ENDPOINT").tooltip('Change VLM')
+        ui.button(on_click=pages.update_ai_endpoint, icon="edit").bind_text_from(app.storage.general, "AI_ENDPOINT").tooltip('Change VLM')
         ui.button("Mount point", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
         ui.button("HQ Volume", on_click=lambda: utils.run_command_with_dialog(f"tree {settings.MAPR_MOUNT}{settings.HQ_VOLUME}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
         logging_card().classes(

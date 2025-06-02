@@ -5,8 +5,7 @@ services:
         container_name: satellite
         environment:
             - clusterName=maprdemo.io
-            - isSecure=true
-            - MAPR_TZ=Europe/London
+            - TZ=Europe/London
         ports:
             - "3000:3000"
             - "3001:3001"

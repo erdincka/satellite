@@ -3,7 +3,6 @@ FROM --platform=linux/amd64 maprtech/dev-sandbox-container:latest
 RUN apt update && apt install -y git python3-dev gcc tree
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV clusterName=maprdemo.io
 ENV isSecure=true
 ENV MAPR_TZ=Europe/London
 ENV LD_LIBRARY_PATH=/opt/mapr/lib

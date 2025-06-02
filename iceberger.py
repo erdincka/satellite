@@ -24,7 +24,7 @@ def get_catalog(warehouse_path: str):
     try:
         from pyiceberg.catalog.sql import SqlCatalog
 
-        logger.debug("Creating catalog: %s", f"sqlite://{warehouse_path}/iceberg.db")
+        logger.debug("Creating catalog: %s", f"sqlite:///{warehouse_path}/iceberg.db")
         catalog = SqlCatalog(
             "default",
             **{
