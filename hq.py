@@ -8,14 +8,11 @@ import settings
 import utils
 
 # Configure logging.
-logging.basicConfig(level=logging.INFO, encoding="utf-8", format=f'%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
+logging.basicConfig(level=logging.INFO, encoding="utf-8", format=f'%(asctime)s:%(levelname)s:%(pathname)s:%(lineno)d:%(message)s')
 logger = logging.getLogger(__name__)
 
 # catch-all exceptions
 app.on_exception(utils.gracefully_fail)
-
-feed_data = utils.load_data(live=False)
-logger.debug("Loaded %d assets", len(feed_data))
 
 def update_ai_endpoint():
     with ui.dialog() as dialog,  ui.card():
@@ -37,14 +34,17 @@ def index():
 
     logger.debug("App configured: %s", app.storage.general['ready'])
 
+    feed_data = utils.load_data(live=False)
+    logger.debug("Loaded %d assets", len(feed_data))
+
     with ui.header(elevated=True).classes('items-center justify-between w-full'):
         ui.label('Command & Control Center').classes('text-bold')
         for svc in settings.HQ_SERVICES:
             with ui.chip(svc.upper(), icon=''):
                 ui.badge("0", color='red').props('floating').bind_text_from(app.storage.user, svc)
         ui.space()
+        ui.button(on_click=pages.configure_app).props('flat color=red').bind_icon_from(app.storage.general, 'ready', backward=lambda x: 'link' if x else 'link_off').tooltip('App ready?').bind_visibility_from(app.storage.general, 'ready', backward=lambda x: not x)
         ui.button("Start", on_click=start_demo, icon='play_circle').bind_visibility_from(app.storage.general, 'ready')
-        ui.button(on_click=utils.configure_app).props('flat color=red').bind_icon_from(app.storage.general, 'ready', backward=lambda x: 'link' if x else 'link_off').tooltip('App ready?').bind_visibility_from(app.storage.general, 'ready', backward=lambda x: not x)
         ui.icon('check_circle' if app.storage.user["stream_replication"] else 'priority_high', color="positive" if app.storage.user["stream_replication"] else "negative").tooltip('Stream replication status')
         ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
         ui.button(on_click=toggle_debug).props('flat color=white').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')
@@ -74,7 +74,8 @@ def index():
 
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run(
-    title=settings.TITLE,
+        uvicorn_reload_excludes='.venv/**/*.py',
+        title=settings.TITLE,
         dark=None,
         storage_secret=settings.STORAGE_SECRET,
         reload=True,

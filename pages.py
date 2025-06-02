@@ -20,6 +20,13 @@ async def start_demo():
     logger.debug("After broadcast: %d", len(settings.HQ_TILES))
 
 
+async def configure_app():
+    app.storage.general["working"] = True
+    async for out in utils.run_command("/bin/bash -c ./configure-app.sh"):
+        logger.info(out.strip())
+    app.storage.general["working"] = False
+
+
 def logging_card():
     # Realtime logging
     with ui.card().props("flat") as logging_card:
