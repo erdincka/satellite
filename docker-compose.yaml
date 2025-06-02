@@ -11,8 +11,6 @@ services:
             - TZ=Europe/London
             - UV_ENV_FILE=.env
             - LD_LIBRARY_PATH=/opt/mapr/lib
-            - CFLAGS=-I/opt/mapr/include
-            - LDFLAGS=-L/opt/mapr/lib
         ports:
             - "3000:3000"
             - "3001:3001"

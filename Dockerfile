@@ -12,6 +12,9 @@ COPY . /app
 WORKDIR /app
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV CFLAGS=-I/opt/mapr/include
+ENV LDFLAGS=-L/opt/mapr/lib
 RUN . $HOME/.local/bin/env && uv add mapr-streams-python
+RUN git config --global credential.helper store
 
 # CMD ["./LD_LIBRARY_PATH=/opt/mapr/lib uv run hq.py"]
