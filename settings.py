@@ -46,7 +46,7 @@ BGCOLORS = {
     "broadcast": "bg-positive",
     "request": "bg-info",
     "response": "bg-warning",
-    "receive": "bg-negative",
+    "receive": "bg-primary",
 }
 
 ICONS = {
@@ -56,8 +56,8 @@ ICONS = {
     "broadcast": "rss_feed",
     "request": "hail",
     "response": "chat",
-    "receive": "📤",
-    # "": "📦",
+    "reply": "comment",
+    "receive": "podcasts",
 }
 
 # Configure logging

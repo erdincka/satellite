@@ -1,7 +1,7 @@
 import os
 from nicegui import ui, binding, app
 import logging
-from pages import dashboard_tiles, logging_card, start_demo, toggle_debug
+import pages
 import services
 import settings
 import utils
@@ -16,22 +16,25 @@ app.on_exception(utils.gracefully_fail)
 
 @ui.page('/')
 def index():
-    if "tile_remove" not in app.storage.user.keys(): app.storage.user["tile_remove"] = 10
+    if "tile_remove" not in app.storage.user.keys(): app.storage.user["tile_remove"] = 20
+    if "debug" not in app.storage.user.keys(): app.storage.user["debug"] = False
+
     app.storage.user['stream_replication'] = utils.stream_replication_status(settings.EDGE_STREAM)
 
-    with ui.header(elevated=True).classes('items-center justify-between w-full'):
+    with ui.header(elevated=True).classes('items-center justify-between w-full bg-secondary'):
         ui.label('Mission Control').classes('text-bold')
-        for svc in settings.EDGE_SERVICES:
-            with ui.chip(svc.capitalize(), icon=''):
-                ui.badge("0", color='red').props('floating').bind_text_from(app.storage.user, svc)
         ui.space()
-        # ui.button("Start", on_click=start_demo, icon='play_circle').props('')
+
+        for svc in settings.EDGE_SERVICES:
+            ui.chip().props('floating').bind_text_from(app.storage.user, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc).classes(settings.BGCOLORS[svc])
+
+        ui.space()
         ui.icon('check_circle' if app.storage.user["stream_replication"] else 'priority_high', color="positive" if app.storage.user["stream_replication"] else "negative").tooltip('Stream replication status')
         ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
-        ui.button(on_click=toggle_debug).props('flat color=white').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')
+        ui.button(on_click=pages.toggle_debug).props('flat color=white').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')
 
     with ui.footer():
-        logging_card().classes(
+        pages.logging_card().classes(
             "flex-grow shrink absolute sticky bottom-0 left-0 w-full opacity-50 hover:opacity-100"
         )
 
@@ -44,7 +47,7 @@ def index():
 
     # Dashboard
     with ui.grid(columns=5).classes("w-full"):
-        ui.timer(0.2, lambda: dashboard_tiles(settings.HQ_TILES))
+        ui.timer(0.2, lambda: pages.dashboard_tiles(settings.EDGE_TILES))
 
 
 if __name__ in {"__main__", "__mp_main__"}:
