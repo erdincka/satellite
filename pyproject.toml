@@ -13,8 +13,7 @@ dependencies = [
     "nicegui>=2.18.0",
     "openai>=1.82.0",
     "pandas>=2.2.3",
-    "pyarrow>=20.0.0",
-    "pyiceberg[sql-sqlite]>=0.9.1",
+    "pyiceberg[pyarrow,sql-sqlite]>=0.9.1",
     "sqlalchemy>=2.0.41",
     "watchdog>=6.0.0",
 ]

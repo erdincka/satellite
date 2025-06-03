@@ -1,14 +1,13 @@
 import os
 from nicegui import ui, app
 import logging
-from pages import dashboard_tiles, logging_card, start_demo, toggle_debug
 import pages
 import services
 import settings
 import utils
 
 # Configure logging.
-logging.basicConfig(level=logging.DEBUG, encoding="utf-8", format=f'%(asctime)s:%(levelname)s:%(pathname)s:%(lineno)d:%(message)s')
+logging.basicConfig(level=logging.INFO, encoding="utf-8", format=f'%(asctime)s:%(levelname)s:%(pathname)s:%(lineno)d:%(message)s')
 logger = logging.getLogger(__name__)
 
 # catch-all exceptions
@@ -17,52 +16,56 @@ app.on_exception(utils.gracefully_fail)
 
 @ui.page('/')
 def index():
-    if "tile_remove" not in app.storage.user.keys(): app.storage.user["tile_remove"] = 10
+    if "tile_remove" not in app.storage.user.keys(): app.storage.user["tile_remove"] = 20
     if "debug" not in app.storage.user.keys(): app.storage.user["debug"] = False
-    # Initialize settings
-    app.storage.user['stream_replication'] = utils.stream_replication_status(settings.HQ_STREAM)
-    # MapR streams are links to tables, so we can check if the link exists
-    app.storage.general['ready'] = os.path.islink(settings.MAPR_MOUNT + settings.HQ_STREAM)
 
     logger.debug("App configured: %s", app.storage.general['ready'])
 
-    feed_data = utils.load_data(live=False)
-    logger.debug("Loaded %d assets", len(feed_data))
-
-    with ui.header(elevated=True).classes('items-center justify-between w-full'):
+    with ui.header(elevated=True).classes('items-center justify-between w-full bg-dark'):
         ui.label('Command & Control Center').classes('text-bold')
-        for svc in settings.HQ_SERVICES:
-            with ui.chip(svc.upper(), icon=''):
-                ui.badge("0", color='red').props('floating').bind_text_from(app.storage.user, svc)
+
         ui.space()
-        ui.button(on_click=pages.configure_app).props('flat color=red').bind_icon_from(app.storage.general, 'ready', backward=lambda x: 'link' if x else 'link_off').tooltip('App ready?').bind_visibility_from(app.storage.general, 'ready', backward=lambda x: not x)
-        ui.button("Start", on_click=start_demo, icon='play_circle').bind_visibility_from(app.storage.general, 'ready')
-        ui.icon('check_circle' if app.storage.user["stream_replication"] else 'priority_high', color="positive" if app.storage.user["stream_replication"] else "negative").tooltip('Stream replication status')
-        ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
-        ui.button(on_click=toggle_debug).props('flat color=white').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')
-        ui.spinner(color='red').bind_visibility_from(app.storage.general, 'working')
+
+        for svc in settings.HQ_SERVICES:
+            ui.chip().props('floating').bind_text_from(app.storage.user, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc).classes(settings.BGCOLORS[svc])
+            # with ui.chip(svc.upper(), icon='').bind_visibility_from(app.storage.general, 'ready'):
+            #     ui.badge("0", color='red').props('floating rounded').bind_text_from(app.storage.user, svc)
+
+        ui.space()
+
+        ui.button(on_click=pages.configure_app, color='negative').props('unelevated round').bind_icon_from(app.storage.general, 'ready', backward=lambda x: 'link' if x else 'link_off').tooltip('App not configured, click to configure!').bind_visibility_from(app.storage.general, 'ready', backward=lambda x: not x)
+        pages.app_status()
+        ui.separator().props('vertical').classes('mx-2')
+        ui.button(on_click=pages.start_demo, icon='rocket_launch').props("unelevated round").bind_visibility_from(app.storage.general, 'ready')
+
+    # Dashboard
+    with ui.grid(columns=5).classes("w-full"):
+        ui.timer(0.4, lambda: pages.dashboard_tiles(settings.HQ_TILES))
+
+    with ui.grid(columns=5).classes("w-full").bind_visibility_from(settings, "HQ_TILES", backward=lambda x: len(x) == 0):
+        # Placeholders
+        for _ in range(3):
+            with ui.card().tight().classes('w-full'):
+                with ui.card_section().classes(f"w-full bg-dark"):
+                    ui.skeleton('text').classes('text-subtitle1')
+                ui.skeleton(square=True, animation='fade', height='150px', width='100%')
+                with ui.card_section().classes('w-full'):
+                    ui.skeleton('text').classes('text-subtitle2') # title
+                    ui.skeleton('text').classes('text-caption') # description
+                    ui.skeleton('text').classes('text-caption w-1/2') # keywords
 
     with ui.footer():
-        ui.label().bind_text_from(app.storage.general, "AI_MODEL")
-        ui.label("@").classes("align-middle")
-        ui.button(on_click=pages.update_ai_endpoint, icon="edit").bind_text_from(app.storage.general, "AI_ENDPOINT").tooltip('Change VLM')
         ui.button("Mount point", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
         ui.button("HQ Volume", on_click=lambda: utils.run_command_with_dialog(f"tree {settings.MAPR_MOUNT}{settings.HQ_VOLUME}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
-        logging_card().classes(
+
+        ui.space()
+
+        ui.button(on_click=pages.toggle_debug).props('unelevated round').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')
+        ui.button("Reset", on_click=pages.reset_app, color='red').bind_visibility_from(app.storage.general, 'ready')
+
+        pages.logging_card().classes(
             "flex-grow shrink absolute sticky bottom-0 left-0 w-full opacity-50 hover:opacity-100"
         ).bind_visibility_from(app.storage.user, "debug")
-
-    if app.storage.general["ready"]:
-        # Start the pipeline process
-        services.publish_to_pipeline(feed_data.to_dict(orient='records'))
-        logger.debug("Published assets: %d", len([ i for i in settings.HQ_TILES if i["service"] == "pipeline"]))
-
-        # Dashboard
-        with ui.grid(columns=5).classes("w-full"):
-            ui.timer(0.2, lambda: dashboard_tiles(settings.HQ_TILES))
-
-        for item in services.request_listener():
-            logger.debug("Received %s", item)
 
 
 if __name__ in {"__main__", "__mp_main__"}:

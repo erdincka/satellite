@@ -11,6 +11,7 @@ import aiclient
 import base64
 from nicegui import ui
 import asyncio
+from typing import Callable
 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def gracefully_fail(exc: Exception):
     logger.exception(exc)
 
 
-async def run_command_with_dialog(command: str) -> None:
+async def run_command_with_dialog(command: str, callback: Callable = lambda: None) -> None:
     """
     Run a command in the background and display the output in the pre-created dialog.
     """
@@ -61,8 +62,9 @@ async def run_command_with_dialog(command: str) -> None:
     dialog.open()
 
     result.content = '' # pyright: ignore
-
     async for out in run_command(command): result.push(out)
+    if callback:
+        callback()
 
 
 async def run_command(command: str):
@@ -83,8 +85,8 @@ async def run_command(command: str):
             break
         yield new.decode()
 
-    yield "Done."
-    logger.debug(f"Finished: {command}")
+    yield f"Finished cmd: {command}"
+    logger.debug(f"Finished cmd: {command}")
 
 
 def load_data(live: bool = True):

@@ -20,34 +20,28 @@ Run `docker logs -f satellite`
 
 Watch for output like `This container IP : 172.x.0.2`
 
-This may take around ~30 minutes.
-
-#### Fix init script
-
-If you are stuck at "after cldb (DATE)" for more than a minute, run the following to continue with the script.
-
-`docker exec -it satellite bash -c "echo mapr | maprlogin password -user mapr"`
+This may take around ~30 minutes on Apple Silicon using emulation, ~15 minutes on x86.
 
 ## Start the application
 
-For the HQ: `docker exec -it satellite bash -c "LD_LIBRARY_PATH=/opt/mapr/lib ~/.local/bin/uv run hq.py"`
-For the Edge: `docker exec -it satellite bash -c "LD_LIBRARY_PATH=/opt/mapr/lib ~/.local/bin/uv run edge.py"`
+For the HQ: `docker exec -it satellite bash -c "UV_ENV_FILE=.env ~/.local/bin/uv run hq.py"`
+For the Edge: `docker exec -it satellite bash -c "UV_ENV_FILE=.env ~/.local/bin/uv run edge.py"`
 
 
 ## TODO
 
 A lot
 
-[ ] Point to remote (PCAI) LLM
+[X] Point to remote (PCAI) LLM
 
-[ ] UI to set up and reset of demo volumes and streams
+[X] UI to set up and reset of demo volumes and streams
 
 [X] Containerize the whole demo app
 
 [ ] Allow using external DF cluster(s)
 
 
-## NOTES
+## NOTES and OBSOLETE SETTINGS
 
 ### Configure and mount NFSv4 (only if using NFSv4)
 
@@ -64,7 +58,7 @@ Restart the NFSv4 server:
 `sudo mount -t nfs4 -o proto=tcp,nolock,sec=sys localhost:/mapr /mapr`
 
 
-### Manually configure the App volumes & streams
+### Manually configure the App volumes & streams (handled by 'configure' button)
 
 ```bash
 CLUSTER_NAME=$(cat /opt/mapr/conf/mapr-clusters.conf | head -n 1 | awk '{print $1}')
@@ -81,7 +75,7 @@ mount -t nfs -o nolock,hard localhost:/mapr /mapr
 ```
 
 
-## RESET
+## RESET (handled by 'reset' button)
 
 ```bash
 maprcli stream delete -path /apps/satellite/edge/edge_stream
@@ -97,11 +91,11 @@ maprcli volume remove -name satellite -force true
 
 You need two terminal sessions to run the application. One for the HQ and one for the edge.
 
-`LD_LIBRARY_PATH=/opt/mapr/lib uv run hq.py`
+`UV_ENV_FILE=.env uv run hq.py`
 
 and
 
-`LD_LIBRARY_PATH=/opt/mapr/lib uv run edge.py`
+`UV_ENV_FILE=.env uv run edge.py`
 
 
 ## Contributing

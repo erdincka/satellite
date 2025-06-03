@@ -36,25 +36,27 @@ def pipeline_to_broadcast(isLive: bool = False):
             i = item.copy()
             i["service"] = "download"
             settings.HQ_TILES.append(i)
+            # work on another copy
+            i = item.copy()
             # Run AI narration on the image
-            item["analysis"] = utils.ai_describe_image(filename, item['description'])
+            i["analysis"] = utils.ai_describe_image(filename, i['description'])
             # Update the table with the analysis
-            logger.debug("Updating table with analysis: %s", item['analysis'])
-            if iceberger.write(warehouse_path=f"{settings.MAPR_MOUNT}{settings.HQ_VOLUME}", namespace="hq", tablename="asset_table", records=[item]):
-                logger.debug("Updated table with analysis: %s", item['analysis'])
-                i = item.copy()
+            logger.debug("Updating table with analysis: %s", i['analysis'])
+            if iceberger.write(warehouse_path=f"{settings.MAPR_MOUNT}{settings.HQ_VOLUME}", namespace="hq", tablename="asset_table", records=[i]):
+                logger.debug("Updated table with analysis: %s", i['analysis'])
+                i = i.copy()
                 i["service"] = "record"
                 settings.HQ_TILES.append(i)
                 logger.debug("Notifying broadcast: %s", i['title'])
-                if streams.produce(stream=settings.HQ_STREAM, topic=settings.ASSET_TOPIC, messages=[item]):
-                    i = item.copy()
+                if streams.produce(stream=settings.HQ_STREAM, topic=settings.ASSET_TOPIC, messages=[i]):
+                    i = i.copy()
                     i["service"] = "broadcast"
                     settings.HQ_TILES.append(i)
                     logger.debug("Broadcasted: %s", i['title'])
                 else:
-                    logger.error("Failed to broadcast: %s", item['title'])
+                    logger.error("Failed to broadcast: %s", i['title'])
             else:
-                logger.error("Failed to record: %s",item['title'])
+                logger.error("Failed to record: %s",i['title'])
         else:
             logger.error("Failed to save file: %s", item['title'])
 

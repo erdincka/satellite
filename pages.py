@@ -1,4 +1,4 @@
-import textwrap
+import os
 from nicegui import ui, app, run
 import logging
 
@@ -15,27 +15,54 @@ def toggle_debug():
     logger.info("Debug mode %s", app.storage.user["debug"])
 
 
-def update_ai_endpoint():
-    with ui.dialog() as dialog,  ui.card():
-        ui.input("Endpoint", placeholder="Enter your AI endpoint...").bind_value(app.storage.general, "AI_ENDPOINT")
-        ui.input("Model Name", placeholder="Enter your AI model name...").bind_value(app.storage.general, "AI_MODEL")
-        ui.button("OK", on_click=dialog.close).props("primary")
-    dialog.on("close", dialog.clear)
-    dialog.open()
-
-
 async def start_demo():
-    app.storage.general["working"] = True
+    # Start the pipeline process
+    feed_data = utils.load_data(live=False)
+    logger.debug("Loaded %d assets", len(feed_data))
+    services.publish_to_pipeline(feed_data.to_dict(orient='records'))
+    logger.debug("Published assets: %d", len([ i for i in settings.HQ_TILES if i["service"] == "pipeline"]))
     await run.io_bound(services.pipeline_to_broadcast, isLive=False)
     logger.debug("After broadcast: %d", len(settings.HQ_TILES))
-    app.storage.general["working"] = False
+    for item in services.request_listener():
+        logger.debug("Received %s", item)
+
+
+@ui.refreshable
+def app_status(caller = None):
+    """
+        Refresh the app status
+        caller: (optional) the caller dialog
+    """
+    app.storage.user['stream_replication'] = utils.stream_replication_status(settings.HQ_STREAM)
+    # MapR streams are links to tables, so we can check if the link exists
+    app.storage.general['ready'] = os.path.islink(settings.MAPR_MOUNT + settings.HQ_STREAM)
+    ui.icon("", color="positive" if app.storage.user["stream_replication"] else "negative").bind_name_from(app.storage.user, "stream_replication", backward=lambda x: 'check_circle' if x else 'priority_high').tooltip('Stream replication status')
+    ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
+
+    if caller and isinstance(caller, ui.dialog):
+        caller.close()
 
 
 async def configure_app():
-    app.storage.general["working"] = True
-    async for out in utils.run_command("/bin/bash -c ./configure-app.sh"):
-        logger.info(out.strip())
-    app.storage.general["working"] = False
+    with ui.dialog() as dialog, ui.card().classes("grow relative"):
+        ui.button(icon="close", on_click=dialog.close).props("flat round dense").classes("absolute right-2 top-2")
+        ui.label("Create volumes & streams...").classes("text-bold")
+        ui.input("Endpoint", placeholder="Enter your AI endpoint...").bind_value(app.storage.general, "AI_ENDPOINT")
+        ui.input("Model Name", placeholder="Enter your AI model name...").bind_value(app.storage.general, "AI_MODEL")
+        ui.button("OK", on_click=lambda: utils.run_command_with_dialog("./configure-app.sh", callback=lambda d=dialog: app_status.refresh(d))).props("primary")
+
+    dialog.on("close", lambda d=dialog: d.delete()) # pyright: ignore
+    dialog.open()
+
+
+async def reset_app():
+    with ui.dialog() as dialog, ui.card().classes("grow relative"):
+        ui.button(icon="close", on_click=dialog.close).props("flat round dense").classes("absolute right-2 top-2")
+        ui.label("This will delete all data and refresh the app...").classes("text-bold")
+        ui.button("OK", on_click=lambda: utils.run_command_with_dialog("./reset-app.sh", callback=lambda d=dialog: app_status.refresh(d)), color='red')
+
+    dialog.on("close", lambda d=dialog: d.delete()) # pyright: ignore
+    dialog.open()
 
 
 def logging_card():
@@ -81,19 +108,20 @@ async def dashboard_tiles(messages: list):
         asset = messages.pop(0) # FIFO
         logger.debug("Process tile for asset: %s", asset)
 
-        with ui.card().classes("h-80").props("animate fadeIn fadeOut bordered").tight() as tileCard:
-            with ui.card_section().classes(f"w-full text-sm {settings.BGCOLORS[asset["service"]]}"):
-                ui.label(asset['service']).classes("uppercase")
-            if asset["service"] in ["broadcast"]:
-                ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}")
-            if asset['service'] in ["response"]:
-                ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}")
-            ui.space()
-            with ui.card_section().classes("text-sm"):
-                ui.label(textwrap.shorten(asset['description'], 32)).tooltip(asset['description']).classes("text-sm")
-                ui.label(textwrap.shorten(asset['keywords'], 32)).tooltip(asset['keywords']).classes("text-italic")
-            with ui.card_section():
-                ui.label(textwrap.shorten(asset['title'], 32)).classes("text-sm").tooltip(asset['title']).classes("text-bold")
+        with ui.card().tight().classes('w-full') as tileCard:
+        # with ui.card().classes("h-80").props("animate fadeIn fadeOut bordered").tight() as tileCard:
+            with ui.card_section().classes(f"w-full {settings.BGCOLORS[asset['service']]}"):
+                ui.label(asset['service']).classes(f"uppercase text-subtitle1")
+            with ui.card_section().classes("w-full h-64"):
+                logger.debug(asset['service'])
+                if asset["service"] in ["broadcast"]:
+                    ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+                if asset['service'] in ["response"]:
+                    ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+
+            ui.label(asset['title'][:40]).tooltip(asset['title']).classes("text-subtitle2")
+            ui.label(asset['description'][:40]).tooltip(asset['description']).classes("text-caption")
+            ui.label(asset['keywords'][:40]).tooltip(asset['keywords']).classes("text-caption")
 
             tileCard.on("click", lambda a=asset: show_asset(a)) # pyright: ignore
             if asset['service'] not in ["response", "broadcast"]: # auto remove tiles if not broadcast (hq) or response (edge)

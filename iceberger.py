@@ -29,7 +29,8 @@ def get_catalog(warehouse_path: str):
             "default",
             **{
                 # creating catalog in working directory
-                "uri": f"sqlite:///{warehouse_path}/iceberg.db",
+                # "uri": f"sqlite:///{warehouse_path}/iceberg.db",
+                "uri": f"sqlite:///iceberg.db",
                 "py-io-impl": "pyiceberg.io.pyarrow.PyArrowFileIO",
             },
         )
