@@ -9,8 +9,6 @@ services:
             - isSecure=true
             - MAPR_TZ=Europe/London
             - TZ=Europe/London
-            - UV_ENV_FILE=.env
-            - LD_LIBRARY_PATH=/opt/mapr/lib
         ports:
             - "3000:3000"
             - "3001:3001"
@@ -20,5 +18,5 @@ services:
             - SYS_ADMIN
         privileged: true
         volumes:
-          - /etc/timezone:/etc/timezone:ro
-          - /etc/localtime:/etc/localtime:ro
+            - /etc/timezone:/etc/timezone:ro
+            - /etc/localtime:/etc/localtime:ro

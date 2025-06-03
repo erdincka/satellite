@@ -12,6 +12,8 @@ COPY . /app
 WORKDIR /app
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+RUN echo "export UV_ENV_FILE=.env" >> $HOME/.bashrc
+RUN echo "export LD_LIBRARY_PATH=/opt/mapr/lib" >> $HOME/.bashrc
 ENV CFLAGS=-I/opt/mapr/include
 ENV LDFLAGS=-L/opt/mapr/lib
 RUN . $HOME/.local/bin/env && uv add mapr-streams-python
