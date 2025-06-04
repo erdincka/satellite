@@ -9,7 +9,7 @@ import settings
 
 logger = logging.getLogger(__name__)
 
-base_url = app.storage.general.get("AI_ENDPOINT", "http://localhost:8080/v1")
+base_url = app.storage.general.get("AI_ENDPOINT", "http://host.docker.internal:8080/v1")
 model = app.storage.general.get("AI_MODEL", "gpt-4-vision-preview")
 # model = "google/gemma-3-4b-it-qat-q4_0-gguf:Q4_0"
 # base_url = 'http://host.docker.internal:11434/v1'

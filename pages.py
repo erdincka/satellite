@@ -27,15 +27,27 @@ async def start_demo():
         logger.debug("Received %s", item)
 
 
+async def edge_start_demo():
+    # services.asset_request()
+    print("running edge services")
+    logger.debug("Starting asset listener")
+    for asset in services.asset_listener():
+        asset["object"] = utils.ai_detect_objects(filename=asset["preview"].split('/')[-1])
+        logger.info("Asset notification: %s", asset['title'])
+    logger.debug("Starting response listener")
+    for asset in services.response_listener():
+        logger.info("Reply received: %s", asset['title'])
+
+
 @ui.refreshable
-def app_status(caller = None):
+def app_status(target: str, caller = None):
     """
         Refresh the app status
         caller: (optional) the caller dialog
     """
-    app.storage.user['stream_replication'] = utils.stream_replication_status(settings.HQ_STREAM)
+    app.storage.user['stream_replication'] = utils.stream_replication_status(settings.HQ_STREAM if target == "hq" else settings.EDGE_STREAM)
     # MapR streams are links to tables, so we can check if the link exists
-    app.storage.general['ready'] = os.path.islink(settings.MAPR_MOUNT + settings.HQ_STREAM)
+    app.storage.general['ready'] = os.path.islink(settings.MAPR_MOUNT + (settings.HQ_STREAM if target == "hq" else settings.EDGE_STREAM))
     ui.icon("", color="positive" if app.storage.user["stream_replication"] else "negative").bind_name_from(app.storage.user, "stream_replication", backward=lambda x: 'check_circle' if x else 'priority_high').tooltip('Stream replication status')
     ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
 
@@ -49,7 +61,7 @@ async def configure_app():
         ui.label("Create volumes & streams...").classes("text-bold")
         ui.input("Endpoint", placeholder="Enter your AI endpoint...").bind_value(app.storage.general, "AI_ENDPOINT")
         ui.input("Model Name", placeholder="Enter your AI model name...").bind_value(app.storage.general, "AI_MODEL")
-        ui.button("OK", on_click=lambda: utils.run_command_with_dialog("./configure-app.sh", callback=lambda d=dialog: app_status.refresh(d))).props("primary")
+        ui.button("OK", on_click=lambda: utils.run_command_with_dialog("./configure-app.sh", callback=lambda d=dialog: app_status.refresh(target='hq', caller=d))).props("primary")
 
     dialog.on("close", lambda d=dialog: d.delete()) # pyright: ignore
     dialog.open()
@@ -59,7 +71,7 @@ async def reset_app():
     with ui.dialog() as dialog, ui.card().classes("grow relative"):
         ui.button(icon="close", on_click=dialog.close).props("flat round dense").classes("absolute right-2 top-2")
         ui.label("This will delete all data and refresh the app...").classes("text-bold")
-        ui.button("OK", on_click=lambda: utils.run_command_with_dialog("./reset-app.sh", callback=lambda d=dialog: app_status.refresh(d)), color='red')
+        ui.button("OK", on_click=lambda: utils.run_command_with_dialog("./reset-app.sh", callback=lambda d=dialog: app_status.refresh(target='hq', caller=d)), color='red')
 
     dialog.on("close", lambda d=dialog: d.delete()) # pyright: ignore
     dialog.open()

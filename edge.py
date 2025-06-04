@@ -21,33 +21,44 @@ def index():
 
     app.storage.user['stream_replication'] = utils.stream_replication_status(settings.EDGE_STREAM)
 
-    with ui.header(elevated=True).classes('items-center justify-between w-full bg-secondary'):
+    with ui.header(elevated=True).classes('items-center justify-between w-full bg-blue-grey'):
         ui.label('Mission Control').classes('text-bold')
         ui.space()
 
         for svc in settings.EDGE_SERVICES:
-            ui.chip().props('floating').bind_text_from(app.storage.user, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc).classes(settings.BGCOLORS[svc])
+            ui.chip().props('floating').bind_text_from(app.storage.user, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc.capitalize()).classes(settings.BGCOLORS[svc])
 
         ui.space()
-        ui.icon('check_circle' if app.storage.user["stream_replication"] else 'priority_high', color="positive" if app.storage.user["stream_replication"] else "negative").tooltip('Stream replication status')
-        ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
-        ui.button(on_click=pages.toggle_debug).props('flat color=white').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')
+        pages.app_status(target="edge")
 
-    with ui.footer():
-        pages.logging_card().classes(
-            "flex-grow shrink absolute sticky bottom-0 left-0 w-full opacity-50 hover:opacity-100"
-        )
+        ui.button(on_click=pages.edge_start_demo, icon='rocket_launch').props("unelevated round").bind_visibility_from(app.storage.general, 'ready')
 
-    # services.asset_request():
-    for asset in services.asset_listener():
-        asset["object"] = utils.ai_detect_objects(filename=asset["preview"].split('/')[-1])
-        logger.info("Asset notification: %s", asset['title'])
-    for asset in services.response_listener():
-        logger.info("Reply received: %s", asset['title'])
+    with ui.grid(columns=5).classes("w-full").bind_visibility_from(settings, "EDGE_TILES", backward=lambda x: len(x) == 0):
+        # Placeholders
+        for _ in range(2):
+            with ui.card().tight().classes('w-full'):
+                with ui.card_section().classes(f"w-full bg-grey"):
+                    ui.skeleton('text').classes('text-subtitle1')
+                ui.skeleton(square=True, animation='fade', height='150px', width='100%')
+                with ui.card_section().classes('w-full'):
+                    ui.skeleton('text').classes('text-subtitle2') # title
+                    ui.skeleton('text').classes('text-caption') # description
+                    ui.skeleton('text').classes('text-caption w-1/2') # keywords
 
     # Dashboard
     with ui.grid(columns=5).classes("w-full"):
         ui.timer(0.2, lambda: pages.dashboard_tiles(settings.EDGE_TILES))
+
+    with ui.footer():
+        ui.button("Mount point", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
+        ui.button("Edge Volume", on_click=lambda: utils.run_command_with_dialog(f"tree {settings.MAPR_MOUNT}{settings.EDGE_VOLUME}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
+
+        ui.space()
+
+        ui.button(on_click=pages.toggle_debug).props('unelevated round').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')
+        pages.logging_card().classes(
+            "flex-grow shrink absolute sticky bottom-0 left-0 w-full opacity-50 hover:opacity-100"
+        ).bind_visibility_from(app.storage.user, "debug")
 
 
 if __name__ in {"__main__", "__mp_main__"}:

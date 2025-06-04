@@ -21,21 +21,18 @@ def index():
 
     logger.debug("App configured: %s", app.storage.general['ready'])
 
-    with ui.header(elevated=True).classes('items-center justify-between w-full bg-dark'):
-        ui.label('Command & Control Center').classes('text-bold')
+    with ui.header(elevated=True).classes('items-center justify-between w-full bg-indigo'):
+        ui.label('Command & Control').classes('text-bold')
 
         ui.space()
 
         for svc in settings.HQ_SERVICES:
-            ui.chip().props('floating').bind_text_from(app.storage.user, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc).classes(settings.BGCOLORS[svc])
-            # with ui.chip(svc.upper(), icon='').bind_visibility_from(app.storage.general, 'ready'):
-            #     ui.badge("0", color='red').props('floating rounded').bind_text_from(app.storage.user, svc)
+            ui.chip().props('floating').bind_text_from(app.storage.user, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc.capitalize()).classes(settings.BGCOLORS[svc])
 
         ui.space()
 
         ui.button(on_click=pages.configure_app, color='negative').props('unelevated round').bind_icon_from(app.storage.general, 'ready', backward=lambda x: 'link' if x else 'link_off').tooltip('App not configured, click to configure!').bind_visibility_from(app.storage.general, 'ready', backward=lambda x: not x)
-        pages.app_status()
-        ui.separator().props('vertical').classes('mx-2')
+        pages.app_status(target="hq")
         ui.button(on_click=pages.start_demo, icon='rocket_launch').props("unelevated round").bind_visibility_from(app.storage.general, 'ready')
 
     # Dashboard
@@ -46,7 +43,7 @@ def index():
         # Placeholders
         for _ in range(3):
             with ui.card().tight().classes('w-full'):
-                with ui.card_section().classes(f"w-full bg-dark"):
+                with ui.card_section().classes(f"w-full bg-grey"):
                     ui.skeleton('text').classes('text-subtitle1')
                 ui.skeleton(square=True, animation='fade', height='150px', width='100%')
                 with ui.card_section().classes('w-full'):
