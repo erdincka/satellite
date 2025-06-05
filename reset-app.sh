@@ -19,3 +19,6 @@ echo -n "Removing app volumes"
 maprcli volume remove -name hq_assets -force true
 maprcli volume remove -name satellite -force true
 [ $? -eq 0 ] && echo 'OK' || echo 'FAILED'
+echo -n "Deleting catalog"
+rm iceberg.db
+[ $? -eq 0 ] && echo 'OK' || echo 'FAILED'

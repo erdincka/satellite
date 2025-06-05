@@ -10,7 +10,8 @@ import settings
 logger = logging.getLogger(__name__)
 
 base_url = app.storage.general.get("AI_ENDPOINT", "http://host.docker.internal:8080/v1")
-model = app.storage.general.get("AI_MODEL", "gpt-4-vision-preview")
+model = app.storage.general.get("AI_MODEL", "llava-v1.5")
+# model = app.storage.general.get("AI_MODEL", "gpt-4-vision-preview")
 # model = "google/gemma-3-4b-it-qat-q4_0-gguf:Q4_0"
 # base_url = 'http://host.docker.internal:11434/v1'
 # model = 'gemma3:27b-it-qat'
@@ -26,8 +27,8 @@ def image_query(image_b64: str|None, prompt: str = "describe the image"):
 
     global model
 
-    logger.debug("Using VLM at %s", base_url)
-    logger.debug("VLM Model: %s", model)
+    logger.info("Using VLM at %s", base_url)
+    logger.info("VLM Model: %s", model)
 
     try:
 

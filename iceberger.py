@@ -1,5 +1,6 @@
 import datetime
 import logging
+import os
 import pandas as pd
 import pyarrow as pa
 from pyiceberg.expressions import EqualTo
@@ -29,6 +30,7 @@ def get_catalog(warehouse_path: str):
             "default",
             **{
                 # creating catalog in working directory
+                # FIX: Hangs if creating the catalog in MapR FS
                 # "uri": f"sqlite:///{warehouse_path}/iceberg.db",
                 "uri": f"sqlite:///iceberg.db",
                 "py-io-impl": "pyiceberg.io.pyarrow.PyArrowFileIO",

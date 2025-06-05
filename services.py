@@ -1,8 +1,9 @@
-from datetime import datetime
+import asyncio
 import logging
 import random
-import pandas as pd
 import json
+
+from nicegui import app, background_tasks
 import iceberger
 import streams, settings
 import mapr
@@ -22,6 +23,9 @@ def publish_to_pipeline(assets: list[dict], count: int = 5):
         settings.HQ_TILES.extend(messages)
         logger.info("Event notifications sent for %d assets", len(messages))
     else:
+        for message in messages:
+            message["service"] = "failed"
+        settings.HQ_TILES.extend(messages)
         logger.error("Failed to put into pipeline: %s", messages)
 
 
@@ -54,45 +58,60 @@ def pipeline_to_broadcast(isLive: bool = False):
                     settings.HQ_TILES.append(i)
                     logger.debug("Broadcasted: %s", i['title'])
                 else:
+                    i = i.copy()
+                    i["service"] = "failed"
+                    settings.HQ_TILES.append(i)
                     logger.error("Failed to broadcast: %s", i['title'])
             else:
+                i = i.copy()
+                i["service"] = "failed"
+                settings.HQ_TILES.append(i)
                 logger.error("Failed to record: %s",i['title'])
         else:
-            logger.error("Failed to save file: %s", item['title'])
+            i = item.copy()
+            i["service"] = "failed"
+            settings.HQ_TILES.append(i)
+            logger.error("Failed to save file: %s", i['title'])
 
 
-def request_listener():
+async def request_listener():
     for msg in streams.consume(settings.HQ_STREAM, settings.REQUEST_TOPIC):
         request = json.loads(msg)
         # process only pending requests
         if "status" in request and request["status"] == "requested":
             i = request.copy()
+            settings.HQ_TILES.append(i)
             logger.info("Received request: %s", i["title"])
             if utils.process_request(i, isLive=False):
                 i["service"] = "response"
                 settings.HQ_TILES.append(i)
-                yield i
             else:
                 logger.error("Failed to process request for %s", i['title'])
+                i['service'] = 'failed'
                 settings.HQ_TILES.append(i)
         else:
             logger.info("Ignoring request: %s with status: %s", request["title"], request["status"])
 
 
 # EDGE SERVICES
-def asset_listener():
-    for msg in streams.consume(settings.EDGE_STREAM, settings.ASSET_TOPIC):
-        asset = json.loads(msg)
-        logger.info("Received: %s", asset["title"])
-        logger.debug(asset)
-        if iceberger.write(f"{settings.MAPR_MOUNT}{settings.EDGE_VOLUME}", "edge", "asset_table", [asset]): # type: ignore
-            logger.debug(f"Asset notification saved: %s", asset['title'])
-            i = asset.copy()
-            i["service"] = "receive"
-            settings.EDGE_TILES.append(i)
-            yield asset
-        else:
-            logger.error("Failed to save asset notification: %s", asset['title'])
+async def asset_listener():
+    while app.storage.general.get('receive_service', False):
+        for msg in streams.consume(settings.EDGE_STREAM, settings.ASSET_TOPIC):
+            asset = json.loads(msg)
+            logger.info("Received: %s", asset["title"])
+            logger.debug(asset)
+            del asset['service'] # drop column for iceberg table
+            if iceberger.write(f"{settings.MAPR_MOUNT}{settings.EDGE_VOLUME}", "edge", "asset_table", [asset]): # type: ignore
+                logger.debug(f"Asset notification saved: %s", asset['title'])
+                i = asset.copy()
+                i["service"] = "received"
+                settings.EDGE_TILES.append(i)
+            else:
+                i = asset.copy()
+                i["service"] = "failed"
+                settings.EDGE_TILES.append(i)
+                logger.error("Failed to save asset notification: %s", asset['title'])
+        await asyncio.sleep(4)
 
 
 def asset_request(asset: dict):
@@ -107,19 +126,23 @@ def asset_request(asset: dict):
         i = asset.copy()
         i["service"] = "request"
         settings.EDGE_TILES.append(i)
-        return True
     else:
+        i = asset.copy()
+        i['service'] = 'failed'
+        settings.EDGE_TILES.append(i)
         logger.error("Failed to request asset: %s", asset['title'])
 
 
-def response_listener():
-    for message in streams.consume(settings.EDGE_STREAM, settings.REQUEST_TOPIC):
-        asset = json.loads(message)
-        if asset["status"] == "fulfilled":
-            logger.debug("Fulfilled: %s", asset)
-            # Mark complete
-            asset["status"] = "completed"
-            settings.EDGE_TILES.append(asset)
-            yield asset
-        else:
-            logger.info("ignoring %s with status: %s", asset["title"], asset["status"])
+async def response_listener():
+    while app.storage.general.get('request_service', False):
+        for message in streams.consume(settings.EDGE_STREAM, settings.REQUEST_TOPIC):
+            asset = json.loads(message)
+            if asset["status"] == "fulfilled":
+                logger.debug("Fulfilled: %s", asset)
+                # Mark complete
+                asset["status"] = "completed"
+                settings.EDGE_TILES.append(asset)
+            else:
+                logger.info("ignoring %s with status: %s", asset["title"], asset["status"])
+        await asyncio.sleep(4)
+

@@ -1,13 +1,14 @@
 import os
-from nicegui import ui, app
+from nicegui import ui, app, background_tasks
 import logging
+import documentation
 import pages
 import services
 import settings
 import utils
 
 # Configure logging.
-logging.basicConfig(level=logging.INFO, encoding="utf-8", format=f'%(asctime)s:%(levelname)s:%(pathname)s:%(lineno)d:%(message)s')
+logging.basicConfig(level=logging.INFO, encoding="utf-8", format=f'%(asctime)s:%(levelname)s: %(pathname)s:%(lineno)d: %(message)s')
 logger = logging.getLogger(__name__)
 
 # catch-all exceptions
@@ -15,11 +16,12 @@ app.on_exception(utils.gracefully_fail)
 
 
 @ui.page('/')
-def index():
-    if "tile_remove" not in app.storage.user.keys(): app.storage.user["tile_remove"] = 20
-    if "debug" not in app.storage.user.keys(): app.storage.user["debug"] = False
+async def index():
+    await ui.context.client.connected()
+    if "tile_remove" not in app.storage.tab.keys(): app.storage.tab["tile_remove"] = 20
+    if "debug" not in app.storage.tab.keys(): app.storage.tab["debug"] = False
 
-    logger.debug("App configured: %s", app.storage.general['ready'])
+    logger.debug("App configured: %s", app.storage.general.get('ready', False))
 
     with ui.header(elevated=True).classes('items-center justify-between w-full bg-indigo'):
         ui.label('Command & Control').classes('text-bold')
@@ -37,32 +39,30 @@ def index():
 
     # Dashboard
     with ui.grid(columns=5).classes("w-full"):
-        ui.timer(0.4, lambda: pages.dashboard_tiles(settings.HQ_TILES))
+        ui.timer(0.5, lambda: pages.dashboard_tiles(settings.HQ_TILES))
+    # ui.timer(3.0, services.request_listener)
 
-    with ui.grid(columns=5).classes("w-full").bind_visibility_from(settings, "HQ_TILES", backward=lambda x: len(x) == 0):
-        # Placeholders
-        for _ in range(3):
-            with ui.card().tight().classes('w-full'):
-                with ui.card_section().classes(f"w-full bg-grey"):
-                    ui.skeleton('text').classes('text-subtitle1')
-                ui.skeleton(square=True, animation='fade', height='150px', width='100%')
-                with ui.card_section().classes('w-full'):
-                    ui.skeleton('text').classes('text-subtitle2') # title
-                    ui.skeleton('text').classes('text-caption') # description
-                    ui.skeleton('text').classes('text-caption w-1/2') # keywords
+    ui.label('App needs to be configured, use the red "disconnected" icon to set up volumes and streams required for the app to function!').bind_visibility_from(app.storage.general, 'ready', lambda x: not x).classes('text-lg')
+
+    # documentation.help_page().bind_visibility_from(app.storage.general, 'ready', lambda x: not x)
+
+    pages.placeholders(3)
 
     with ui.footer():
-        ui.button("Mount point", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
-        ui.button("HQ Volume", on_click=lambda: utils.run_command_with_dialog(f"tree {settings.MAPR_MOUNT}{settings.HQ_VOLUME}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
+        if os.path.exists(settings.MAPR_MOUNT):
+            ui.button("Mount point", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
+        ui.button("HQ Volume", on_click=lambda: utils.run_command_with_dialog(f"tree {settings.MAPR_MOUNT}{settings.HQ_VOLUME}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x).bind_visibility_from(app.storage.general, 'ready')
 
         ui.space()
 
-        ui.button(on_click=pages.toggle_debug).props('unelevated round').bind_icon_from(app.storage.user, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Debug mode')
-        ui.button("Reset", on_click=pages.reset_app, color='red').bind_visibility_from(app.storage.general, 'ready')
+        ui.button(on_click=pages.toggle_debug).props('unelevated round').bind_icon_from(app.storage.tab, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Toggle debug mode')
+        documentation.welcome().tooltip('Demo Instructions')
+        ui.button("AI Model", on_click=pages.change_vlm).bind_visibility_from(app.storage.general, 'ready').props('unelevated')
+        ui.button("Reset", on_click=pages.reset_app, color='red').bind_visibility_from(app.storage.general, 'ready').props('unelevated')
 
         pages.logging_card().classes(
             "flex-grow shrink absolute sticky bottom-0 left-0 w-full opacity-50 hover:opacity-100"
-        ).bind_visibility_from(app.storage.user, "debug")
+        ).bind_visibility_from(app.storage.tab, "debug")
 
 
 if __name__ in {"__main__", "__mp_main__"}:

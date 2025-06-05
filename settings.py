@@ -33,8 +33,8 @@ REQUEST_TOPIC = "requests"
 MAPR_MOUNT = f"/mapr/{MAPR_CLUSTER}"
 
 # Application settings
-HQ_SERVICES = ["pipeline", "download", "record", "broadcast", "request", "response"]
-EDGE_SERVICES = ["receive", "request", "response"]
+HQ_SERVICES = ["pipeline", "download", "record", "broadcast", "request", "response", "failed"]
+EDGE_SERVICES = ["receive", "request", "response", "failed"]
 
 HQ_TILES = []
 EDGE_TILES = []
@@ -47,6 +47,7 @@ BGCOLORS = {
     "request": "bg-info",
     "response": "bg-warning",
     "receive": "bg-primary",
+    "failed": "bg-negative"
 }
 
 ICONS = {
@@ -58,6 +59,7 @@ ICONS = {
     "response": "chat",
     "reply": "comment",
     "receive": "podcasts",
+    "failed": "error",
 }
 
 # Configure logging

@@ -93,9 +93,8 @@ def load_data(live: bool = True):
     if live:
         logger.debug("Getting data from API...")
         search_terms = ["missile", "earthquake", "tsunami", "oil", "flood", "iraq", "syria", "korea", "pacific"]
-        # query = st.segmented_control(label="Assets", options=search_terms)
-        query = search_terms[0]
-        return nasa_feed(isLive=True, query=query if query else "")
+        query = ui.toggle(options=search_terms, clearable=False, value=search_terms[0])
+        return nasa_feed(isLive=True, query=str(query) if query else "")
     else:
         logger.debug("Loading data from file...")
         return nasa_feed(isLive=False)
@@ -160,14 +159,14 @@ def ai_describe_image(filename: str, context: str = ""):
     ai_response = aiclient.image_query(image_b64=image_b64,
         prompt=f"Analyze the scene in this image as an intelligence officer and describe the situation in 1 sentence, use this description about the image: '{context}'")
     logger.info("AI analysis for %s: %s", filename, ai_response)
-    return ai_response
+    return ai_response if ai_response else f'Failed to get a response for {filename}'
 
 
 def ai_detect_objects(filename: str):
     image_b64 = image_to_base64(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}")
     ai_response = aiclient.image_query(image_b64=image_b64, prompt="list the objects in the image")
     logger.info("AI identification for %s: %s", filename, ai_response)
-    return ai_response
+    return ai_response if ai_response else f'failed to get object detection for {filename}'
 
 
 def ai_ask_question(filename: str, question: str):
@@ -261,9 +260,10 @@ def stream_replication_status(stream: str):
         if r.status_code == 200 and r.json().get("status") == "OK":
             uptodate = r.json()['data'][0]['isUptodate']
             logger.info("Replicating: %s", uptodate)
-            return uptodate
+            return bool(uptodate)
         else:
             logger.error("Failed to retrieve stream replication status. %s", r.text)
+            return False
     except Exception as e:
         logger.error("Failed to retrieve stream replication status. %s", e)
         return False

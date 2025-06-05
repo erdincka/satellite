@@ -10,9 +10,9 @@ import utils
 logger = logging.getLogger(__name__)
 
 def toggle_debug():
-    app.storage.user["debug"] = not app.storage.user["debug"]
-    logger.root.setLevel(logging.DEBUG if app.storage.user["debug"] else logging.INFO)
-    logger.info("Debug mode %s", app.storage.user["debug"])
+    app.storage.tab["debug"] = not app.storage.tab["debug"]
+    logger.root.setLevel(logging.DEBUG if app.storage.tab["debug"] else logging.INFO)
+    logger.info("Debug mode %s", app.storage.tab["debug"])
 
 
 async def start_demo():
@@ -23,20 +23,18 @@ async def start_demo():
     logger.debug("Published assets: %d", len([ i for i in settings.HQ_TILES if i["service"] == "pipeline"]))
     await run.io_bound(services.pipeline_to_broadcast, isLive=False)
     logger.debug("After broadcast: %d", len(settings.HQ_TILES))
-    for item in services.request_listener():
-        logger.debug("Received %s", item)
+    # for item in services.request_listener():
+    #     logger.debug("Received %s", item)
 
 
-async def edge_start_demo():
-    # services.asset_request()
-    print("running edge services")
-    logger.debug("Starting asset listener")
-    for asset in services.asset_listener():
-        asset["object"] = utils.ai_detect_objects(filename=asset["preview"].split('/')[-1])
-        logger.info("Asset notification: %s", asset['title'])
-    logger.debug("Starting response listener")
-    for asset in services.response_listener():
-        logger.info("Reply received: %s", asset['title'])
+# async def edge_start_demo():
+#     # services.asset_request()
+#     logger.debug("Starting asset listener")
+#     for asset in services.asset_listener():
+#         logger.info("Asset notification: %s", asset['title'])
+    # logger.debug("Starting response listener")
+    # for asset in services.response_listener():
+    #     logger.info("Reply received: %s", asset['title'])
 
 
 @ui.refreshable
@@ -56,7 +54,7 @@ def app_status(target: str, caller = None):
 
 
 async def configure_app():
-    with ui.dialog() as dialog, ui.card().classes("grow relative"):
+    with ui.dialog() as dialog, ui.card().classes("relative place-items-center"):
         ui.button(icon="close", on_click=dialog.close).props("flat round dense").classes("absolute right-2 top-2")
         ui.label("Create volumes & streams...").classes("text-bold")
         ui.input("Endpoint", placeholder="Enter your AI endpoint...").bind_value(app.storage.general, "AI_ENDPOINT")
@@ -68,10 +66,22 @@ async def configure_app():
 
 
 async def reset_app():
-    with ui.dialog() as dialog, ui.card().classes("grow relative"):
+    with ui.dialog() as dialog, ui.card().classes("relative place-items-center"):
         ui.button(icon="close", on_click=dialog.close).props("flat round dense").classes("absolute right-2 top-2")
         ui.label("This will delete all data and refresh the app...").classes("text-bold")
         ui.button("OK", on_click=lambda: utils.run_command_with_dialog("./reset-app.sh", callback=lambda d=dialog: app_status.refresh(target='hq', caller=d)), color='red')
+
+    dialog.on("close", lambda d=dialog: d.delete()) # pyright: ignore
+    dialog.open()
+
+
+async def change_vlm():
+    with ui.dialog().props('full-width') as dialog, ui.card().classes("relative grow place-items-center"):
+        ui.button(icon="close", on_click=dialog.close).props("flat round dense").classes("absolute right-2 top-2")
+        ui.label("AI Model configuration...").classes("text-bold w-full")
+        ui.input("Endpoint", placeholder="Enter your AI endpoint...").bind_value(app.storage.general, "AI_ENDPOINT").classes('w-full')
+        ui.input("Model Name", placeholder="Enter your AI model name...").bind_value(app.storage.general, "AI_MODEL").classes('w-full')
+        ui.button("OK", on_click=lambda d=dialog: app_status.refresh(target='hq', caller=d)).props("unelevated").classes('w-full')
 
     dialog.on("close", lambda d=dialog: d.delete()) # pyright: ignore
     dialog.open()
@@ -93,7 +103,7 @@ def logging_card():
 
 # Image dialog
 def show_asset(asset: dict):
-    with ui.dialog().props("") as show, ui.card().classes("grow"):
+    with ui.dialog() as show, ui.card().classes("grow overflow-scroll"):
         ui.label(f"Asset: {asset['title']}").classes("w-full text-wrap")
         ui.space()
         ui.label(f"Description: {asset['description']}").classes("w-full text-wrap")
@@ -108,9 +118,21 @@ def show_asset(asset: dict):
             ui.input("question", placeholder="Ask a question...",)
             # on_submit=questions_to_image, args=(asset["preview"].split('/')[-1], asset["description"]
             ui.chat_message(name="AI Assistant").bind_label_from(app.storage.user, "ai_response")
-
     show.on("close", show.clear)
     show.open()
+
+
+def placeholders(count: int = 1):
+    with ui.grid(columns=5).classes("w-full").bind_visibility_from(app.storage.general, 'ready'):
+        for _ in range(count):
+            with ui.card().tight().classes('w-full'):
+                with ui.card_section().classes(f"w-full bg-grey"):
+                    ui.skeleton('text').classes('text-subtitle1')
+                ui.skeleton(square=True, animation='fade', height='80px', width='100%')
+                with ui.card_section().classes('w-full'):
+                    ui.skeleton('text').classes('text-subtitle2') # title
+                    ui.skeleton('text').classes('text-caption') # description
+                    ui.skeleton('text').classes('text-caption w-1/2') # keywords
 
 
 # return image to display on UI
@@ -121,23 +143,25 @@ async def dashboard_tiles(messages: list):
         logger.debug("Process tile for asset: %s", asset)
 
         with ui.card().tight().classes('w-full') as tileCard:
-        # with ui.card().classes("h-80").props("animate fadeIn fadeOut bordered").tight() as tileCard:
-            with ui.card_section().classes(f"w-full {settings.BGCOLORS[asset['service']]}"):
-                ui.label(asset['service']).classes(f"uppercase text-subtitle1")
-            with ui.card_section().classes("w-full h-64"):
-                logger.debug(asset['service'])
-                if asset["service"] in ["broadcast"]:
-                    ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
-                if asset['service'] in ["response"]:
-                    ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
-
-            ui.label(asset['title'][:40]).tooltip(asset['title']).classes("text-subtitle2")
-            ui.label(asset['description'][:40]).tooltip(asset['description']).classes("text-caption")
-            ui.label(asset['keywords'][:40]).tooltip(asset['keywords']).classes("text-caption")
-
             tileCard.on("click", lambda a=asset: show_asset(a)) # pyright: ignore
-            if asset['service'] not in ["response", "broadcast"]: # auto remove tiles if not broadcast (hq) or response (edge)
-                ui.timer(app.storage.user.get("tile_remove", 20), tileCard.delete, once=True)
+
+            if asset['service'] == 'receive': # Different display for edge asset listener
+                ui.button(on_click=lambda a=asset: services.asset_request(a)).classes('w-full').props('unelevated dense outline').bind_text_from(asset, 'service', lambda s: "Requested" if s == 'requested' else 'Request') # pyright: ignore
+            else:
+                with ui.card_section().classes(f"w-full m-0 py-0 {settings.BGCOLORS[asset['service']]}"):
+                    ui.label(asset['service']).classes(f"uppercase text-subtitle1")
+                with ui.card_section().classes("w-full h-24"):
+                    if asset["service"] in ["broadcast"]:
+                        ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+                    if asset['service'] in ["response"]:
+                        ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+
+            ui.label(asset['title']).tooltip(asset['title']).classes("text-subtitle2 px-1 line-clamp-1")
+            ui.label(asset['description']).tooltip(asset['description']).classes("text-caption px-1 line-clamp-1")
+            ui.label(asset['keywords']).tooltip(asset['keywords']).classes("text-caption px-1 line-clamp-1")
+
+            if asset['service'] not in ["response", "broadcast", "receive", "request"]: # auto remove tiles if not broadcast (hq) or response/receive (edge)
+                ui.timer(app.storage.tab.get("tile_remove", 20), tileCard.delete, once=True)
 
             app.storage.user[asset["service"]] = app.storage.user.get(asset["service"], 0) + 1
 
