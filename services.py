@@ -130,8 +130,9 @@ def response_listener():
         if asset["status"] == "responded":
             logger.debug("Got response: %s", asset)
             # Mark complete
-            asset["status"] = "completed"
+            asset['service'] = 'response'
+            asset['status'] = 'completed'
+            asset['object'] = utils.ai_describe_image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}", asset['description'])
             settings.EDGE_TILES.append(asset)
         else:
             logger.info("ignoring %s with status: %s", asset["title"], asset["status"])
-

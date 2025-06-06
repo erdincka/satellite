@@ -78,7 +78,7 @@ async def reset_app():
 async def change_vlm():
     with ui.dialog().props('full-width') as dialog, ui.card().classes("relative grow place-items-center"):
         ui.button(icon="close", on_click=dialog.close).props("flat round dense").classes("absolute right-2 top-2")
-        ui.label("AI Model configuration...").classes("text-bold w-full")
+        ui.label("Point to your VLM...").classes("text-bold w-full")
         ui.input("Endpoint", placeholder="Enter your AI endpoint...").bind_value(app.storage.general, "AI_ENDPOINT").classes('w-full')
         ui.input("Model Name", placeholder="Enter your AI model name...").bind_value(app.storage.general, "AI_MODEL").classes('w-full')
         ui.button("OK", on_click=lambda d=dialog: app_status.refresh(target='hq', caller=d)).props("unelevated").classes('w-full')
@@ -104,6 +104,7 @@ def logging_card():
 # Image dialog
 def show_asset(asset: dict):
     with ui.dialog() as show, ui.card().classes("grow overflow-scroll"):
+        ui.label("Service: " + asset['service']).classes("w-full") # TODO: remove, this is for debugging
         ui.label(f"Asset: {asset['title']}").classes("w-full text-wrap")
         ui.space()
         ui.label(f"Description: {asset['description']}").classes("w-full text-wrap")
@@ -122,18 +123,18 @@ def show_asset(asset: dict):
     show.open()
 
 
-def placeholders(count: int = 1):
-    with ui.grid(columns=5).classes("w-full").bind_visibility_from(app.storage.general, 'ready') as grid:
-        for _ in range(count):
-            with ui.card().tight().classes('w-full'):
-                with ui.card_section().classes(f"w-full bg-grey"):
-                    ui.skeleton('text').classes('text-subtitle1')
-                ui.skeleton(square=True, animation='fade', height='80px', width='100%')
-                with ui.card_section().classes('w-full'):
-                    ui.skeleton('text').classes('text-subtitle2') # title
-                    ui.skeleton('text').classes('text-caption') # description
-                    ui.skeleton('text').classes('text-caption w-1/2') # keywords
-    return grid
+# def placeholders(count: int = 1):
+#     with ui.grid(columns=5).classes("w-full").bind_visibility_from(app.storage.general, 'ready') as grid:
+#         for _ in range(count):
+#             with ui.card().tight().classes('w-full'):
+#                 with ui.card_section().classes(f"w-full bg-grey"):
+#                     ui.skeleton('text').classes('text-subtitle1')
+#                 ui.skeleton(square=True, animation='fade', height='80px', width='100%')
+#                 with ui.card_section().classes('w-full'):
+#                     ui.skeleton('text').classes('text-subtitle2') # title
+#                     ui.skeleton('text').classes('text-caption') # description
+#                     ui.skeleton('text').classes('text-caption w-1/2') # keywords
+#     return grid
 
 
 # return image to display on UI
@@ -141,30 +142,43 @@ async def dashboard_tiles(messages: list):
     # Return an image card if available
     while len(messages) > 0:
         asset = messages.pop(0) # FIFO
-        logger.debug("Process tile for asset: %s", asset)
+        if asset['service'] == 'receive': # Different display for edge asset listener / Skip received items on edge dashboard
+            pass
+            # ui.space()
+            # ui.button(on_click=lambda a=asset: services.asset_request(a)).classes('w-full').props('unelevated dense outline').bind_text_from(asset, 'service', lambda s: "Requested" if s == 'requested' else 'Request') # pyright: ignore
+        else:
+            logger.debug("Building the tile for asset: %s", asset)
+            with ui.card().tight().classes('w-full') as tileCard:
+                with ui.card_section().classes(f"w-full m-0 py-0 {settings.BGCOLORS[asset['service']]}"):
+                    ui.label(asset['service']).classes(f"uppercase text-subtitle1")
+                with ui.card_section().classes("w-full h-24"):
+                    if asset["service"] in ["broadcast"]:
+                        ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+                    if asset['service'] in ["response"]:
+                        if asset['status'] == 'requested':
+                            ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+                        else:
+                            ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
 
-        with ui.card().tight().classes('w-full') as tileCard:
-            with ui.card_section().classes(f"w-full m-0 py-0 {settings.BGCOLORS[asset['service']]}"):
-                ui.label(asset['service']).classes(f"uppercase text-subtitle1")
-            with ui.card_section().classes("w-full h-24"):
-                if asset["service"] in ["broadcast"]:
-                    ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
-                if asset['service'] in ["response"]:
-                    ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+                ui.label(asset['title']).tooltip(asset['title']).classes("text-subtitle2 px-1 line-clamp-1")
+                ui.label(asset['description']).tooltip(asset['description']).classes("text-caption px-1 line-clamp-1")
+                ui.label(asset['keywords']).tooltip(asset['keywords']).classes("text-caption px-1 line-clamp-1")
 
-            ui.label(asset['title']).tooltip(asset['title']).classes("text-subtitle2 px-1 line-clamp-1")
-            ui.label(asset['description']).tooltip(asset['description']).classes("text-caption px-1 line-clamp-1")
-            ui.label(asset['keywords']).tooltip(asset['keywords']).classes("text-caption px-1 line-clamp-1")
+                if asset['service'] not in ["response", "broadcast", "receive", "request"]: # auto remove tiles if not broadcast (hq) or response/receive (edge)
+                    ui.timer(app.storage.tab.get("tile_remove", 20), tileCard.delete, once=True)
 
-            if asset['service'] not in ["response", "broadcast", "receive", "request"]: # auto remove tiles if not broadcast (hq) or response/receive (edge)
-                ui.timer(app.storage.tab.get("tile_remove", 20), tileCard.delete, once=True)
+                app.storage.user[asset["service"]] = app.storage.user.get(asset["service"], 0) + 1
 
-            app.storage.user[asset["service"]] = app.storage.user.get(asset["service"], 0) + 1
-
-            if asset['service'] == 'receive': # Different display for edge asset listener
-                ui.space()
-                ui.button(on_click=lambda a=asset: services.asset_request(a)).classes('w-full').props('unelevated dense outline').bind_text_from(asset, 'service', lambda s: "Requested" if s == 'requested' else 'Request') # pyright: ignore
-            else:
                 tileCard.on("click", lambda a=asset: show_asset(a)) # pyright: ignore
 
-        return tileCard
+            return tileCard
+
+
+def dashboard_list(messages: list):
+    with ui.list().props('bordered separator').classes('w-full'):
+        ui.item_label('Broadcast received').classes('text-bold').props('header')
+        for asset in [m for m in messages if m['service'] == 'receive']:
+            logger.info("Received asset: %s", asset)
+            with ui.item():
+                ui.item_label(asset['title'])
+                ui.item_label(asset['description']).props('caption').classes('line-clamp-1')

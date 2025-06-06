@@ -52,18 +52,18 @@ async def index():
 
     documentation.help_page().bind_visibility_from(app.storage.general, 'ready', lambda x: not x)
 
-    pages.placeholders(3).bind_visibility_from(app.storage, 'user', backward=lambda svc: svc in settings.EDGE_SERVICES and app.storage.user[svc] > 0)
-    
+    # pages.placeholders(3).bind_visibility_from(app.storage, 'user', backward=lambda svc: svc in settings.EDGE_SERVICES and app.storage.user[svc] > 0)
+
     with ui.footer():
         if os.path.exists(settings.MAPR_MOUNT):
-            ui.button("Mount point", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
-        ui.button("HQ Volume", on_click=lambda: utils.run_command_with_dialog(f"tree {settings.MAPR_MOUNT}{settings.HQ_VOLUME}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x).bind_visibility_from(app.storage.general, 'ready')
+            ui.button("EDF Root", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x).props('unelevated')
+        ui.button("App Volume", on_click=lambda: utils.run_command_with_dialog(f"tree {settings.MAPR_MOUNT}{settings.HQ_VOLUME}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x).bind_visibility_from(app.storage.general, 'ready').props('unelevated')
 
         ui.space()
 
         ui.button(on_click=pages.toggle_debug).props('unelevated round').bind_icon_from(app.storage.tab, 'debug', backward=lambda x: 'bug_report' if x else 'info').tooltip('Toggle debug mode')
         documentation.welcome().tooltip('Demo Instructions')
-        ui.button("AI Model", on_click=pages.change_vlm).bind_visibility_from(app.storage.general, 'ready').props('unelevated')
+        ui.button("VLM", on_click=pages.change_vlm).bind_visibility_from(app.storage.general, 'ready').props('unelevated')
         ui.button("Reset", on_click=pages.reset_app, color='red').bind_visibility_from(app.storage.general, 'ready').props('unelevated')
 
         pages.logging_card().classes(
