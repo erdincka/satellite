@@ -80,52 +80,54 @@ and save the image in a volume, while updating the location of the asset in the 
 
 
 def help_page():
-    with ui.expansion(
-        settings.TITLE,
-        icon="info",
-        caption="Core to Edge end to end pipeline processing using Ezmeral Data Fabric",
-        group="help",
-    ).classes("w-full").classes("text-bold") as help:
-        ui.markdown(DEMO["description"]).classes("font-normal")
-        ui.image(DEMO["image"]).classes(
-            "object-scale-down g-10"
-        )
+    with ui.element('div').classes("w-full") as help:
+        with ui.expansion(
+            settings.TITLE,
+            icon="info",
+            caption="Core to Edge end to end pipeline processing using Ezmeral Data Fabric",
+            group="help",
+        ):
+            ui.markdown(DEMO["description"]).classes("font-normal")
+            ui.image(DEMO["image"]).classes(
+                "object-scale-down g-10"
+            )
 
-    ui.separator()
+        ui.separator()
 
-    # Prepare
-    with ui.expansion("Demo Preparations", icon="engineering", caption="Need to create volumes and streams before demo", group="help").classes("w-full text-bold"):
+        # Prepare
+        with ui.expansion("Demo Preparations", icon="engineering", caption="Need to create volumes and streams before demo", group="help").classes("w-full"):
 
-        ui.label("Create the volumes and streams.")
+            ui.label("Create the volumes and streams.").classes("text-bold")
 
-        ui.code(open('configure-app.sh').read(), language='bash').classes("w-full")
+            ui.code(open('configure-app.sh').read(), language='bash').classes("w-full")
 
-        # ui.button("Run", on_click=laxmbda: run_command_with_dialog('./configure-app.sh'))
+            # ui.button("Run", on_click=laxmbda: run_command_with_dialog('./configure-app.sh'))
 
-        ui.space()
+            ui.space()
 
-    ui.separator()
+        ui.separator()
 
-    # Demo Flow
-    with ui.expansion("Demo Flow for HQ", icon="fa-solid fa-gears", caption="Let's start the demo at the HQ Dashboard!", group="help").classes("w-full text-bold"):
-        for step in FLOW['HQ']:
-            ui.label(step["title"]).classes('subtitle1')
-            ui.markdown(step["description"])
-            ui.code(inspect.getsource(step["code"])).classes("w-full")
+        # Demo Flow
+        with ui.expansion("Demo Flow for HQ", icon="fa-solid fa-gears", caption="Let's start the demo at the HQ Dashboard!", group="help").classes("w-full"):
+            for step in FLOW['HQ']:
+                ui.label(step["title"]).classes("text-bold")
+                ui.markdown(step["description"])
+                ui.code(inspect.getsource(step["code"])).classes("w-full")
 
-    ui.separator()
+        ui.separator()
 
-    with ui.expansion("Demo Flow for Edge", icon="fa-solid fa-truck-field", caption="Continue the demo at the Edge Dashboard!", group="help").classes("w-full text-bold"):
-        for step in FLOW['EDGE']:
-            ui.label(step["title"]).classes('subtitle1')
-            ui.markdown(step["description"])
-            ui.code(inspect.getsource(step["code"])).classes("w-full")
+        with ui.expansion("Demo Flow for Edge", icon="fa-solid fa-truck-field", caption="Continue the demo at the Edge Dashboard!", group="help").classes("w-full"):
+            for step in FLOW['EDGE']:
+                ui.label(step["title"]).classes("text-bold")
+                ui.markdown(step["description"])
+                ui.code(inspect.getsource(step["code"])).classes("w-full")
 
     return help
 
+
 def welcome():
     with ui.dialog().props("full-width") as help, ui.card().classes("relative grow place-items-center"):
-        ui.button('Close', on_click=help.close)
+        # ui.button('Close', on_click=help.close)
         help_page()
 
     help.on('close', help.clear)

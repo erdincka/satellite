@@ -9,32 +9,32 @@ import utils
 
 logger = logging.getLogger(__name__)
 
+feed_data = utils.load_data(live=False)
+logger.debug("Loaded %d assets", len(feed_data))
+
+
+def sent_to_publish():
+    # Start the pipeline process
+    services.publish_to_pipeline(feed_data.to_dict(orient='records'))
+    logger.debug("Published assets: %d", len([ i for i in settings.HQ_TILES if i["service"] == "pipeline"]))
+
+
 def toggle_debug():
     app.storage.tab["debug"] = not app.storage.tab["debug"]
     logger.root.setLevel(logging.DEBUG if app.storage.tab["debug"] else logging.INFO)
     logger.info("Debug mode %s", app.storage.tab["debug"])
 
 
-async def start_demo():
-    # Start the pipeline process
-    feed_data = utils.load_data(live=False)
-    logger.debug("Loaded %d assets", len(feed_data))
-    services.publish_to_pipeline(feed_data.to_dict(orient='records'))
-    logger.debug("Published assets: %d", len([ i for i in settings.HQ_TILES if i["service"] == "pipeline"]))
+async def hq_services():
+    logger.debug("HQ services running...")
     await run.io_bound(services.pipeline_to_broadcast, isLive=False)
-    logger.debug("After broadcast: %d", len(settings.HQ_TILES))
-    # for item in services.request_listener():
-    #     logger.debug("Received %s", item)
+    await run.io_bound(services.request_listener)
 
 
-# async def edge_start_demo():
-#     # services.asset_request()
-#     logger.debug("Starting asset listener")
-#     for asset in services.asset_listener():
-#         logger.info("Asset notification: %s", asset['title'])
-    # logger.debug("Starting response listener")
-    # for asset in services.response_listener():
-    #     logger.info("Reply received: %s", asset['title'])
+async def edge_services():
+    logger.debug("Edge services running...")
+    await run.io_bound(services.asset_listener)
+    await run.io_bound(services.response_listener)
 
 
 @ui.refreshable
@@ -54,11 +54,11 @@ def app_status(target: str, caller = None):
 
 
 async def configure_app():
-    with ui.dialog() as dialog, ui.card().classes("relative place-items-center"):
+    with ui.dialog().props('full-width') as dialog, ui.card().classes("relative grow place-items-center"):
         ui.button(icon="close", on_click=dialog.close).props("flat round dense").classes("absolute right-2 top-2")
-        ui.label("Create volumes & streams...").classes("text-bold")
-        ui.input("Endpoint", placeholder="Enter your AI endpoint...").bind_value(app.storage.general, "AI_ENDPOINT")
-        ui.input("Model Name", placeholder="Enter your AI model name...").bind_value(app.storage.general, "AI_MODEL")
+        ui.label("Create volumes & streams...").classes("text-bold w-full")
+        ui.input("Endpoint", placeholder="Enter your AI endpoint...").bind_value(app.storage.general, "AI_ENDPOINT").classes('w-full')
+        ui.input("Model Name", placeholder="Enter your AI model name...").bind_value(app.storage.general, "AI_MODEL").classes('w-full')
         ui.button("OK", on_click=lambda: utils.run_command_with_dialog("./configure-app.sh", callback=lambda d=dialog: app_status.refresh(target='hq', caller=d))).props("primary")
 
     dialog.on("close", lambda d=dialog: d.delete()) # pyright: ignore
@@ -66,10 +66,10 @@ async def configure_app():
 
 
 async def reset_app():
-    with ui.dialog() as dialog, ui.card().classes("relative place-items-center"):
+    with ui.dialog().props('full-width') as dialog, ui.card().classes("relative grow place-items-center"):
         ui.button(icon="close", on_click=dialog.close).props("flat round dense").classes("absolute right-2 top-2")
-        ui.label("This will delete all data and refresh the app...").classes("text-bold")
-        ui.button("OK", on_click=lambda: utils.run_command_with_dialog("./reset-app.sh", callback=lambda d=dialog: app_status.refresh(target='hq', caller=d)), color='red')
+        ui.label("This will delete all data and refresh the app...").classes("text-bold w-full")
+        ui.button("OK", on_click=lambda: utils.run_command_with_dialog("./reset-app.sh", callback=lambda d=dialog: app_status.refresh(target='hq', caller=d)), color='red').props("unelevated").classes('w-full')
 
     dialog.on("close", lambda d=dialog: d.delete()) # pyright: ignore
     dialog.open()
@@ -123,7 +123,7 @@ def show_asset(asset: dict):
 
 
 def placeholders(count: int = 1):
-    with ui.grid(columns=5).classes("w-full").bind_visibility_from(app.storage.general, 'ready'):
+    with ui.grid(columns=5).classes("w-full").bind_visibility_from(app.storage.general, 'ready') as grid:
         for _ in range(count):
             with ui.card().tight().classes('w-full'):
                 with ui.card_section().classes(f"w-full bg-grey"):
@@ -133,6 +133,7 @@ def placeholders(count: int = 1):
                     ui.skeleton('text').classes('text-subtitle2') # title
                     ui.skeleton('text').classes('text-caption') # description
                     ui.skeleton('text').classes('text-caption w-1/2') # keywords
+    return grid
 
 
 # return image to display on UI
@@ -143,18 +144,13 @@ async def dashboard_tiles(messages: list):
         logger.debug("Process tile for asset: %s", asset)
 
         with ui.card().tight().classes('w-full') as tileCard:
-            tileCard.on("click", lambda a=asset: show_asset(a)) # pyright: ignore
-
-            if asset['service'] == 'receive': # Different display for edge asset listener
-                ui.button(on_click=lambda a=asset: services.asset_request(a)).classes('w-full').props('unelevated dense outline').bind_text_from(asset, 'service', lambda s: "Requested" if s == 'requested' else 'Request') # pyright: ignore
-            else:
-                with ui.card_section().classes(f"w-full m-0 py-0 {settings.BGCOLORS[asset['service']]}"):
-                    ui.label(asset['service']).classes(f"uppercase text-subtitle1")
-                with ui.card_section().classes("w-full h-24"):
-                    if asset["service"] in ["broadcast"]:
-                        ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
-                    if asset['service'] in ["response"]:
-                        ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+            with ui.card_section().classes(f"w-full m-0 py-0 {settings.BGCOLORS[asset['service']]}"):
+                ui.label(asset['service']).classes(f"uppercase text-subtitle1")
+            with ui.card_section().classes("w-full h-24"):
+                if asset["service"] in ["broadcast"]:
+                    ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+                if asset['service'] in ["response"]:
+                    ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
 
             ui.label(asset['title']).tooltip(asset['title']).classes("text-subtitle2 px-1 line-clamp-1")
             ui.label(asset['description']).tooltip(asset['description']).classes("text-caption px-1 line-clamp-1")
@@ -164,5 +160,11 @@ async def dashboard_tiles(messages: list):
                 ui.timer(app.storage.tab.get("tile_remove", 20), tileCard.delete, once=True)
 
             app.storage.user[asset["service"]] = app.storage.user.get(asset["service"], 0) + 1
+
+            if asset['service'] == 'receive': # Different display for edge asset listener
+                ui.space()
+                ui.button(on_click=lambda a=asset: services.asset_request(a)).classes('w-full').props('unelevated dense outline').bind_text_from(asset, 'service', lambda s: "Requested" if s == 'requested' else 'Request') # pyright: ignore
+            else:
+                tileCard.on("click", lambda a=asset: show_asset(a)) # pyright: ignore
 
         return tileCard

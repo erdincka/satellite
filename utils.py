@@ -205,12 +205,13 @@ def process_request(request: dict, isLive: bool = False) -> bool:
         shutil.copy(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}", f"{settings.MAPR_MOUNT}{settings.EDGE_REPLICATED_VOLUME}/{filename}")
 
     # Send message for copied asset
-    request["status"] = "responded"
-    if streams.produce(settings.EDGE_STREAM, settings.REQUEST_TOPIC, [request]):
-        logger.info("Request processed: %s", request['title'])
+    i = request.copy()
+    i["status"] = "responded"
+    if streams.produce(settings.EDGE_STREAM, settings.RESPONSE_TOPIC, [i]):
+        logger.info("Response is sent for: %s", i['title'])
         return True
     else:
-        logger.error("Failed to send request completion: %s", request['title'])
+        logger.error("Failed to send response for: %s", i['title'])
         return False
 
 

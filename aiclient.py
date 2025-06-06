@@ -27,8 +27,7 @@ def image_query(image_b64: str|None, prompt: str = "describe the image"):
 
     global model
 
-    logger.info("Using VLM at %s", base_url)
-    logger.info("VLM Model: %s", model)
+    logger.debug("Using VLM at %s with modal: %s", base_url, model)
 
     try:
 

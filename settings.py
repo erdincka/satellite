@@ -29,6 +29,7 @@ EDGE_REPLICATED_VOLUME = f"{HQ_VOLUME}/edge_replicated"
 PIPELINE = "pipeline"
 ASSET_TOPIC = "assets"
 REQUEST_TOPIC = "requests"
+RESPONSE_TOPIC = "responses"
 
 MAPR_MOUNT = f"/mapr/{MAPR_CLUSTER}"
 

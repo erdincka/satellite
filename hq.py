@@ -35,7 +35,13 @@ async def index():
 
         ui.button(on_click=pages.configure_app, color='negative').props('unelevated round').bind_icon_from(app.storage.general, 'ready', backward=lambda x: 'link' if x else 'link_off').tooltip('App not configured, click to configure!').bind_visibility_from(app.storage.general, 'ready', backward=lambda x: not x)
         pages.app_status(target="hq")
-        ui.button(on_click=pages.start_demo, icon='rocket_launch').props("unelevated round").bind_visibility_from(app.storage.general, 'ready')
+        # ui.button(on_click=pages.hq_services, icon='rocket_launch').props("unelevated round").bind_visibility_from(app.storage.general, 'ready')
+        timer = ui.timer(30, pages.hq_services)
+        ui.switch().bind_value_to(timer, 'active').props("checked-icon=check unchecked-icon=pause").bind_visibility_from(app.storage.general, 'ready')
+
+        # Start the pipeline process
+        ui.button("Publish some more", on_click=pages.sent_to_publish)
+        # services.publish_to_pipeline(feed_data.to_dict(orient='records'))
 
     # Dashboard
     with ui.grid(columns=5).classes("w-full"):
@@ -44,10 +50,10 @@ async def index():
 
     ui.label('App needs to be configured, use the red "disconnected" icon to set up volumes and streams required for the app to function!').bind_visibility_from(app.storage.general, 'ready', lambda x: not x).classes('text-lg')
 
-    # documentation.help_page().bind_visibility_from(app.storage.general, 'ready', lambda x: not x)
+    documentation.help_page().bind_visibility_from(app.storage.general, 'ready', lambda x: not x)
 
-    pages.placeholders(3)
-
+    pages.placeholders(3).bind_visibility_from(app.storage, 'user', backward=lambda svc: svc in settings.EDGE_SERVICES and app.storage.user[svc] > 0)
+    
     with ui.footer():
         if os.path.exists(settings.MAPR_MOUNT):
             ui.button("Mount point", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)

@@ -28,6 +28,9 @@ async def index():
 
         ui.space()
         pages.app_status(target="edge")
+        timer = ui.timer(30, pages.edge_services)
+        ui.switch().bind_value_to(timer, 'active').props("checked-icon=check unchecked-icon=pause").bind_visibility_from(app.storage.general, 'ready')
+
 
         # ui.button(on_click=pages.edge_start_demo, icon='rocket_launch').props("unelevated round").bind_visibility_from(app.storage.general, 'ready')
 
@@ -40,7 +43,7 @@ async def index():
     # Placeholders
     # with ui.grid(columns=5).classes("w-full").bind_visibility_from(settings, "EDGE_TILES", backward=lambda x: len(x) == 0):
     ui.label('App needs to be configured, use the "link" button on Main page to set up volumes and streams required for the app to function!').bind_visibility_from(app.storage.general, 'ready', lambda x: not x).classes('text-lg')
-    pages.placeholders()
+    pages.placeholders().bind_visibility_from(app.storage, 'user', backward=lambda svc: svc in settings.HQ_SERVICES and app.storage.user[svc] > 0)
     with ui.footer():
         ui.button("Mount point", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
         ui.button("Edge Volume", on_click=lambda: utils.run_command_with_dialog(f"tree -L 1 {settings.MAPR_MOUNT}{settings.EDGE_VOLUME}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x)
