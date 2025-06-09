@@ -19,6 +19,7 @@ app.on_exception(utils.gracefully_fail)
 async def index():
     await ui.context.client.connected()
     if "tile_remove" not in app.storage.tab.keys(): app.storage.tab["tile_remove"] = 20
+    # if "assets" not in app.storage.tab.keys(): app.storage.tab['assets'] = []
     if "debug" not in app.storage.tab.keys(): app.storage.tab["debug"] = False
 
     logger.debug("App configured: %s", app.storage.general.get('ready', False))
@@ -29,35 +30,40 @@ async def index():
         ui.space()
 
         for svc in settings.HQ_SERVICES:
-            ui.chip().props('floating').bind_text_from(app.storage.user, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc.capitalize()).classes(settings.BGCOLORS[svc])
+            ui.chip().props('floating').bind_text_from(settings.APP_STATUS, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc.capitalize()).classes(settings.BGCOLORS[svc])
 
         ui.space()
 
         ui.button(on_click=pages.configure_app, color='negative').props('unelevated round').bind_icon_from(app.storage.general, 'ready', backward=lambda x: 'link' if x else 'link_off').tooltip('App not configured, click to configure!').bind_visibility_from(app.storage.general, 'ready', backward=lambda x: not x)
         pages.app_status(target="hq")
         # ui.button(on_click=pages.hq_services, icon='rocket_launch').props("unelevated round").bind_visibility_from(app.storage.general, 'ready')
-        timer = ui.timer(30, pages.hq_services)
-        ui.switch().bind_value_to(timer, 'active').props("checked-icon=check unchecked-icon=pause").bind_visibility_from(app.storage.general, 'ready')
+        # timer = ui.timer(30, pages.hq_services)
+        # ui.switch().bind_value_to(timer, 'active').props("checked-icon=check unchecked-icon=pause").bind_visibility_from(app.storage.general, 'ready')
 
-        # Start the pipeline process
-        ui.button("Publish some more", on_click=pages.sent_to_publish)
+        # Start the demo with services
+        ui.button("Start", on_click=pages.hq_services)
         # services.publish_to_pipeline(feed_data.to_dict(orient='records'))
 
     # Dashboard
-    with ui.grid(columns=5).classes("w-full"):
-        ui.timer(0.5, lambda: pages.dashboard_tiles(settings.HQ_TILES))
-    # ui.timer(3.0, services.request_listener)
+    # with ui.list().props('bordered separator').classes('w-full h-96 overflow-auto') as tiles:
+    #     ui.separator()
+    #     ui.timer(2, lambda: pages.asset_list_items('HQ'))
+    log = ui.log().classes('w-full h-32')
+    ui.timer(2, lambda: pages.asset_list_items('HQ', log))
 
+    with ui.grid(columns=5).classes('w-full overflow-auto'):
+        ui.timer(2, lambda: pages.asset_cards('HQ'))
+
+    # Notify to configure the app
     ui.label('App needs to be configured, use the red "disconnected" icon to set up volumes and streams required for the app to function!').bind_visibility_from(app.storage.general, 'ready', lambda x: not x).classes('text-lg')
 
+    # Show demo info
     documentation.help_page().bind_visibility_from(app.storage.general, 'ready', lambda x: not x)
-
-    # pages.placeholders(3).bind_visibility_from(app.storage, 'user', backward=lambda svc: svc in settings.EDGE_SERVICES and app.storage.user[svc] > 0)
 
     with ui.footer():
         if os.path.exists(settings.MAPR_MOUNT):
-            ui.button("EDF Root", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x).props('unelevated')
-        ui.button("App Volume", on_click=lambda: utils.run_command_with_dialog(f"tree {settings.MAPR_MOUNT}{settings.HQ_VOLUME}")).bind_enabled_from(app.storage.user, "busy", backward=lambda x: not x).bind_visibility_from(app.storage.general, 'ready').props('unelevated')
+            ui.button("EDF Root", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(settings.APP_STATUS, "busy", backward=lambda x: not x).props('unelevated')
+        ui.button("App Volume", on_click=lambda: utils.run_command_with_dialog(f"tree {settings.MAPR_MOUNT}{settings.HQ_VOLUME}")).bind_enabled_from(settings.APP_STATUS, "busy", backward=lambda x: not x).bind_visibility_from(app.storage.general, 'ready').props('unelevated')
 
         ui.space()
 

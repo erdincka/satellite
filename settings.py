@@ -36,9 +36,12 @@ MAPR_MOUNT = f"/mapr/{MAPR_CLUSTER}"
 # Application settings
 HQ_SERVICES = ["pipeline", "download", "record", "broadcast", "request", "response", "failed"]
 EDGE_SERVICES = ["receive", "request", "response", "failed"]
+APP_STATUS = {}
 
-HQ_TILES = []
-EDGE_TILES = []
+PROCESSED_ASSETS = {
+    "HQ":[],
+    "EDGE":[]
+}
 
 BGCOLORS = {
     "pipeline": "bg-primary",
