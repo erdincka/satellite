@@ -28,17 +28,17 @@ async def index():
 
         ui.space()
         pages.app_status(target="edge")
-        # timer = ui.timer(30, pages.edge_services)
-        # ui.switch().bind_value_to(timer, 'active').props("checked-icon=check unchecked-icon=pause").bind_visibility_from(app.storage.general, 'ready')
         # Start the demo with services
-        ui.button("Start", on_click=pages.edge_services)
+        timer = ui.timer(30, pages.edge_services)
+        ui.switch().bind_value_to(timer, 'active').props("checked-icon=check unchecked-icon=pause").bind_visibility_from(app.storage.general, 'ready')
+        # ui.button("Start", on_click=pages.edge_services)
 
 
     # Dashboard
     # with ui.grid(columns=5).classes("w-full"):
     #     ui.timer(0.2, pages.dashboard_tiles)
-    log = ui.log().classes('w-full h-32')
-    ui.timer(2, lambda: pages.asset_list_items('EDGE', log))
+    lister = ui.list().props('bordered separator').classes('w-full h-32 overflow-auto')
+    ui.timer(2, lambda: pages.asset_list_items('EDGE', lister))
 
     with ui.grid(columns=5).classes('w-full overflow-auto'):
         ui.timer(2, lambda: pages.asset_cards('EDGE'))

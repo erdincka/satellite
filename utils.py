@@ -141,10 +141,6 @@ def parse_data(data):
         return pd.DataFrame()
 
 
-def last_five(items: list):
-    return items[::-1][-5:]
-
-
 def image_to_base64(image_path: str):
     try:
         with open(image_path, "rb") as image_file:
@@ -174,7 +170,7 @@ def ai_ask_question(filename: str, question: str):
     image_b64 = image_to_base64(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}")
     ai_response = aiclient.image_query(image_b64=image_b64, prompt=question)
     logger.info("AI identification for %s: %s", filename, ai_response)
-    return ai_response
+    return ai_response if ai_response else "Your question remained unanswered!!!"
 
 
 def process_request(request: dict, isLive: bool = False) -> bool:

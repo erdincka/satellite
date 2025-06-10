@@ -101,20 +101,39 @@ def logging_card():
 def show_asset(asset: dict):
     with ui.dialog() as show, ui.card().classes("grow overflow-scroll"):
         ui.label("Service: " + asset['service']).classes(f"w-full {settings.BGCOLORS[asset['service']]}") # TODO: remove, this is for debugging
-        ui.label(f"Asset: {asset['title']}").classes("w-full text-wrap")
+        ui.label(f"Asset: {asset['title']}").classes("w-full text-wrap line-clamp-2").tooltip(asset['title'])
         ui.space()
-        ui.label(f"Description: {asset['description']}").classes("w-full text-wrap")
-        ui.label(f"Keywords: {asset['keywords']}").classes("w-full text-wrap")
+        ui.label(f"Description: {asset['description']}").classes("w-full text-wrap line-clamp-5").tooltip(asset['description'])
+        ui.label(f"Keywords: {asset['keywords']}").classes("w-full text-wrap line-clamp-2").tooltip(asset['keywords'])
         ui.space()
-        if asset["service"] in ["response", "broadcast"]:
-            ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}")
+        if asset["service"] in ["broadcast"]:
+            ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+        if asset['service'] in ["response"]:
+            if asset['status'] == 'requested':
+                ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+            else:
+                ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
+                ui.button("Sync volumes (if image is missing)", on_click=utils.start_volume_mirror).props("unelevated").classes('w-full')
         if "analysis" in asset:
             ui.label(f"AI Summary: {asset['analysis']}")
         if "object" in asset:
             ui.label(f"Detected: {asset['object']}")
-            ui.input("question", placeholder="Ask a question...",)
-            # on_submit=questions_to_image, args=(asset["preview"].split('/')[-1], asset["description"]
-            ui.chat_message(name="AI Assistant").bind_label_from(settings.APP_STATUS, "ai_response")
+            async def send():
+                question = text.value
+                text.value = ''
+                with message_container:
+                    ui.chat_message(text=question, name='You', sent=True)
+                    response_message = ui.chat_message(name='Bot', sent=False)
+                    spinner = ui.spinner(type='dots')
+                response = utils.ai_ask_question(asset['preview'].split('/')[-1], question)
+                response_message.clear()
+                with response_message:
+                    ui.html(response)
+                ui.run_javascript('window.scrollTo(0, document.body.scrollHeight)')
+                message_container.remove(spinner)
+            text = ui.input(placeholder="Ask AI...").props('rounded outlined input-class=mx-3').classes('w-full self-center').on('keydown.enter', send)
+            message_container = ui.grid(columns=2).classes('w-full')
+
         if asset['service'] == 'receive':
             ui.button('Request', on_click=lambda a=asset: services.asset_request(a)).props('unelevated').classes('w-full') # pyright: ignore
     show.on("close", show.clear)
@@ -124,7 +143,7 @@ def show_asset(asset: dict):
 # return image to display on UI
 async def asset_cards(target: str):
     for asset in settings.PROCESSED_ASSETS[target]:
-        if asset['service'] in ['pipeline', 'download', 'record', 'failed']:
+        if asset['service'] in ['pipeline', 'download', 'record', 'failed', 'receive']:
             continue
         logger.debug("Building the tile for asset: %s", asset)
         with ui.card().tight().classes('w-full') as tileCard:
@@ -152,31 +171,17 @@ async def asset_cards(target: str):
 
 
 # @ui.refreshable
-def asset_list_items(target: str, ui_log: ui.log):
+def asset_list_items(target: str, container: ui.element):
     for asset in settings.PROCESSED_ASSETS[target]:
-        if asset['service'] in ['receive', 'broadcast', 'response', 'request']:
+        if asset['service'] in ['receive']:
+            with container:
+                with ui.item(on_click=lambda a=asset: services.asset_request(a)):
+                    with ui.item_section():
+                        ui.item_label(asset['title'])
+                        ui.item_label(asset['description']).props('caption').classes('line-clamp-1').tooltip(asset['description'])
+            settings.APP_STATUS[asset["service"]] = settings.APP_STATUS.get(asset["service"], 0) + 1
+            settings.PROCESSED_ASSETS[target].remove(asset)
+        elif asset['service'] in ['broadcast', 'response', 'request']:
             continue
-        # with ui.item(on_click=lambda a=asset: show_asset(a)).classes(settings.BGCOLORS[asset['service']]) as asset_card: # pyright: ignore
-        #     with ui.item_section().props('avatar').classes(f"w-12 place-items-center") :
-        #         # ui.item_label(asset['service']).classes(f"uppercase text-medium")
-        #         ui.icon(settings.ICONS[asset['service']], color=settings.BGCOLORS[asset['service']]).tooltip(asset['service'])
-        #     with ui.item_section():
-        #         ui.item_label(asset['title']).tooltip(asset['description']).classes("text-subtitle2 px-1 line-clamp-1")
-        #         # ui.item_label(asset['description']).tooltip(asset['description']).classes("text-caption px-1 line-clamp-1").props('caption')
-        #         # ui.item_label(asset['keywords']).tooltip(asset['keywords']).classes("text-caption px-1 line-clamp-1").props('caption')
-        #     with ui.item_section().props('side'):
-        #         if asset["service"] in ["broadcast"]:
-        #             ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
-        #         if asset['service'] in ["response"]:
-        #             if asset['status'] == 'requested':
-        #                 ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
-        #             else:
-        #                 ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
-
-        # # if asset['service'] not in ["response", "broadcast", "receive", "request"]: # auto remove tiles if not broadcast (hq) or response/receive (edge)
-        # #     ui.timer(app.storage.tab.get("tile_remove", 20), asset_card.delete, once=True)
-
-        ui_log.push(f"{asset['service'].upper()}: {asset['title']} - {asset['description']}")
-        settings.APP_STATUS[asset["service"]] = settings.APP_STATUS.get(asset["service"], 0) + 1
-
-        settings.PROCESSED_ASSETS[target].remove(asset)
+        else:
+            container.push(f"{asset['service'].upper()}: {asset['title']} - {asset['description']}")

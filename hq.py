@@ -37,11 +37,11 @@ async def index():
         ui.button(on_click=pages.configure_app, color='negative').props('unelevated round').bind_icon_from(app.storage.general, 'ready', backward=lambda x: 'link' if x else 'link_off').tooltip('App not configured, click to configure!').bind_visibility_from(app.storage.general, 'ready', backward=lambda x: not x)
         pages.app_status(target="hq")
         # ui.button(on_click=pages.hq_services, icon='rocket_launch').props("unelevated round").bind_visibility_from(app.storage.general, 'ready')
-        # timer = ui.timer(30, pages.hq_services)
-        # ui.switch().bind_value_to(timer, 'active').props("checked-icon=check unchecked-icon=pause").bind_visibility_from(app.storage.general, 'ready')
+        timer = ui.timer(30, pages.hq_services)
+        ui.switch().bind_value_to(timer, 'active').props("checked-icon=check unchecked-icon=pause").bind_visibility_from(app.storage.general, 'ready')
 
         # Start the demo with services
-        ui.button("Start", on_click=pages.hq_services)
+        # ui.button("Start", on_click=pages.hq_services)
         # services.publish_to_pipeline(feed_data.to_dict(orient='records'))
 
     # Dashboard
@@ -49,7 +49,7 @@ async def index():
     #     ui.separator()
     #     ui.timer(2, lambda: pages.asset_list_items('HQ'))
     log = ui.log().classes('w-full h-32')
-    ui.timer(2, lambda: pages.asset_list_items('HQ', log))
+    ui.timer(1, lambda: pages.asset_list_items('HQ', log))
 
     with ui.grid(columns=5).classes('w-full overflow-auto'):
         ui.timer(2, lambda: pages.asset_cards('HQ'))
