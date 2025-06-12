@@ -1,6 +1,7 @@
 import inspect
 from nicegui import app, ui
 
+import mapr
 import services
 import settings
 from utils import run_command_with_dialog
@@ -57,7 +58,7 @@ and save the image in a volume, while updating the location of the asset in the 
         {
             "title": "Upstream Comm",
             "description": "Monitor upstream connectivity and data replication status",
-            "code": utils.stream_replication_status,
+            "code": mapr.stream_replication_status,
         },
         {
             "title": "Broadcast Listener",

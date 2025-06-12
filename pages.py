@@ -1,9 +1,11 @@
+from datetime import timedelta
 import inspect
 import os
 from random import randint
 from nicegui import background_tasks, ui, app, run
 import logging
 
+import mapr
 import services
 import settings
 from utils import LogElementHandler
@@ -40,12 +42,13 @@ def app_status(target: str, caller = None):
         Refresh the app status
         caller: (optional) the caller dialog
     """
-    settings.APP_STATUS['stream_replication'] = utils.stream_replication_status(settings.HQ_STREAM if target == "hq" else settings.EDGE_STREAM)
+    settings.APP_STATUS['stream_replication'] = mapr.stream_replication_status(settings.HQ_STREAM if target == "HQ" else settings.EDGE_STREAM)
     # MapR streams are links to tables, so we can check if the link exists
-    app.storage.general['ready'] = os.path.islink(settings.MAPR_MOUNT + (settings.HQ_STREAM if target == "hq" else settings.EDGE_STREAM))
+    app.storage.general['ready'] = os.path.islink(settings.MAPR_MOUNT + (settings.HQ_STREAM if target == "HQ" else settings.EDGE_STREAM))
     ui.icon("", color="positive" if settings.APP_STATUS["stream_replication"] else "negative").bind_name_from(settings.APP_STATUS, "stream_replication", backward=lambda x: 'check_circle' if x else 'priority_high').tooltip('Stream replication status')
     ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
-    ui.label().bind_text_from(settings.APP_STATUS, 'HQ_MIRROR' if target == 'HQ' else 'EDGE_MIRROR').classes("text-caption").tooltip('Volume mirror status')
+    if target == 'EDGE' and mapr.volume_mirror_status():
+        ui.label().bind_text_from(settings.APP_STATUS, 'EDGE_MIRROR', backward=lambda x: str(timedelta(seconds=x)).split('.')[0]).classes("text-caption").tooltip('Volume mirror status')
     if caller and isinstance(caller, ui.dialog):
         caller.close()
 
@@ -114,7 +117,7 @@ def show_asset(asset: dict):
                 ui.image(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
             else:
                 ui.image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}").classes("w-full h-full")
-                ui.button("Sync volumes (if image is missing)", on_click=utils.start_volume_mirror).props("unelevated").classes('w-full')
+                ui.button("Sync volumes (if image is missing)", on_click=mapr.start_volume_mirror).props("unelevated").classes('w-full')
         if "analysis" in asset:
             ui.label(f"AI Summary: {asset['analysis']}")
         if "object" in asset:
@@ -192,12 +195,10 @@ def asset_list_items(target: str, container: ui.element):
 
 
 def show_code(target: str, service: str):
-    with ui.dialog() as show, ui.card().classes("grow overflow-scroll"):
+    logger.debug("Showing code for %s %s", target, service)
+    with ui.dialog() as show, ui.card().classes("grow overflow-scroll w-full"):
         ui.label(f"Service: {target} {service}").classes(f"w-full {settings.BGCOLORS[service]}") # TODO: remove, this is for debugging
-        ui.label(f"code: {services.CODE[target].get(service, None)}")
-        ### NOTE TO SELF: check if service name is matching and provide code if it does.
-        # if service in services.CODE[target].keys():
-        #     logger.info("Showing code for %s", service)
-        #     # ui.code(inspect.getsource(services.CODE[target][service])).classes("w-full")
+        # ui.label(f"code: {services.CODE[target].get(service, None)}")
+        ui.code(inspect.getsource(services.CODE[target][service])).classes("w-full")
     show.open()
     show.on("close", show.clear)

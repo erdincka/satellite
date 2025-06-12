@@ -24,12 +24,13 @@ async def index():
         ui.space()
 
         for svc in settings.EDGE_SERVICES:
-            ui.chip().props('floating').bind_text_from(settings.APP_STATUS, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc.capitalize()).classes(settings.BGCOLORS[svc])
+            ui.chip(on_click=lambda s=svc: pages.show_code("EDGE", s) if s in services.CODE['EDGE'] else None).props('floating').bind_text_from(settings.APP_STATUS, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc.capitalize()).classes(settings.BGCOLORS[svc]) # pyright: ignore
 
         ui.space()
-        pages.app_status(target="edge")
+        pages.app_status(target="EDGE")
+        ui.timer(5, lambda: pages.app_status.refresh(target="EDGE"))
         # Start the demo with services
-        timer = ui.timer(10, pages.edge_services)
+        timer = ui.timer(15, pages.edge_services)
         # Monitor volume status
         # ui.timer(5, lambda: utils.volume_mirror_status('EDGE'))
         ui.switch().bind_value_to(timer, 'active').props("checked-icon=check unchecked-icon=pause").bind_visibility_from(app.storage.general, 'ready')
@@ -45,8 +46,7 @@ async def index():
     with ui.grid(columns=5).classes('w-full overflow-auto'):
         ui.timer(2, lambda: pages.asset_cards('EDGE'))
 
-
-    ui.label('App needs to be configured, use the "link" button on Main page to set up volumes and streams required for the app to function!').bind_visibility_from(app.storage.general, 'ready', lambda x: not x).classes('text-lg')
+    ui.label('App not configured!').bind_visibility_from(app.storage.general, 'ready', lambda x: not x).classes('text-lg')
 
     with ui.footer():
         ui.button("EDF Root", on_click=lambda: utils.run_command_with_dialog(f"tree -L 2 {settings.MAPR_MOUNT}")).bind_enabled_from(settings.APP_STATUS, "busy", backward=lambda x: not x).props('unelevated')

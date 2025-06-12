@@ -51,7 +51,7 @@ def pipeline_to_broadcast(isLive: bool = False):
             i["analysis"] = utils.ai_describe_image(filename, i['description'])
             # Update the table with the analysis
             logger.debug("Updating table with analysis: %s", i['analysis'])
-            if iceberger.write(warehouse_path=f"{settings.MAPR_MOUNT}{settings.HQ_VOLUME}", namespace="hq", tablename="asset_table", records=[i]):
+            if iceberger.write(warehouse_path=f"{settings.MAPR_MOUNT}{settings.HQ_VOLUME}", namespace="HQ", tablename="asset_table", records=[i]):
                 logger.debug("Updated table with analysis: %s", i['analysis'])
                 i = i.copy()
                 i["service"] = "record"
@@ -121,7 +121,7 @@ def asset_listener():
         logger.info("Received: %s", asset["title"])
         logger.debug(asset)
         del asset['service'] # drop column for iceberg table
-        if iceberger.write(f"{settings.MAPR_MOUNT}{settings.EDGE_VOLUME}", "edge", "asset_table", [asset]): # type: ignore
+        if iceberger.write(f"{settings.MAPR_MOUNT}{settings.EDGE_VOLUME}", "EDGE", "asset_table", [asset]): # type: ignore
             logger.debug(f"Asset notification saved: %s", asset['title'])
             i = asset.copy()
             i["service"] = "receive"

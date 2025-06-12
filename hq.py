@@ -30,14 +30,16 @@ async def index():
         ui.space()
 
         for svc in settings.HQ_SERVICES:
-            ui.chip(on_click=lambda s=svc: pages.show_code("HQ", s)).props('floating').bind_text_from(settings.APP_STATUS, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc.capitalize()).classes(settings.BGCOLORS[svc]) # pyright: ignore
+            ui.chip(on_click=lambda s=svc: pages.show_code("HQ", s) if s in services.CODE['HQ'] else None).props('floating').bind_text_from(settings.APP_STATUS, svc).bind_icon_from(settings.ICONS, svc).tooltip(svc.capitalize()).classes(settings.BGCOLORS[svc]) # pyright: ignore
 
         ui.space()
 
         ui.button(on_click=pages.configure_app, color='negative').props('unelevated round').bind_icon_from(app.storage.general, 'ready', backward=lambda x: 'link' if x else 'link_off').tooltip('App not configured, click to configure!').bind_visibility_from(app.storage.general, 'ready', backward=lambda x: not x)
-        pages.app_status(target="hq")
+        pages.app_status(target="HQ")
+        ui.timer(5, lambda: pages.app_status.refresh(target="HQ"))
+
         # ui.button(on_click=pages.hq_services, icon='rocket_launch').props("unelevated round").bind_visibility_from(app.storage.general, 'ready')
-        timer = ui.timer(10, pages.hq_services)
+        timer = ui.timer(15, pages.hq_services)
         ui.switch().bind_value_to(timer, 'active').props("checked-icon=check unchecked-icon=pause").bind_visibility_from(app.storage.general, 'ready')
 
         # Monitor volume status
