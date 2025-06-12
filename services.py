@@ -11,7 +11,6 @@ import utils
 
 logger = logging.getLogger(__name__)
 
-
 # HQ Services
 def publish_to_pipeline(assets: list[dict], count: int = 5):
     logger.debug("Picking random %d assets out of %d samples", count, len(assets))
@@ -165,3 +164,17 @@ def response_listener():
             settings.PROCESSED_ASSETS['EDGE'].append(asset)
         else:
             logger.info("ignoring %s with status: %s", asset["title"], asset["status"])
+
+
+CODE = {
+    "HQ": {
+        "publish": publish_to_pipeline,
+        "broadcast": pipeline_to_broadcast,
+        "request": request_listener,
+    },
+    "EDGE": {
+        "receive": asset_listener,
+        "request": asset_request,
+        "response": response_listener,
+    }
+}

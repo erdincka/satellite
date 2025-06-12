@@ -1,3 +1,4 @@
+import inspect
 import os
 from random import randint
 from nicegui import background_tasks, ui, app, run
@@ -22,7 +23,7 @@ def toggle_debug():
 
 async def hq_services():
     logger.debug("HQ services running...")
-    background_tasks.create(run.io_bound(services.publish_to_pipeline, assets=feed_data.to_dict(orient='records'), count=randint(1, 10)))
+    background_tasks.create(run.io_bound(services.publish_to_pipeline, assets=feed_data.to_dict(orient='records'), count=randint(1, 5)))
     background_tasks.create(run.io_bound(services.pipeline_to_broadcast, isLive=False))
     background_tasks.create(run.io_bound(services.request_listener))
 
@@ -44,7 +45,7 @@ def app_status(target: str, caller = None):
     app.storage.general['ready'] = os.path.islink(settings.MAPR_MOUNT + (settings.HQ_STREAM if target == "hq" else settings.EDGE_STREAM))
     ui.icon("", color="positive" if settings.APP_STATUS["stream_replication"] else "negative").bind_name_from(settings.APP_STATUS, "stream_replication", backward=lambda x: 'check_circle' if x else 'priority_high').tooltip('Stream replication status')
     ui.icon('check_circle' if os.path.exists(settings.MAPR_MOUNT) else 'priority_high', color="positive" if os.path.exists(settings.MAPR_MOUNT) else "negative").tooltip('Mount status')
-
+    ui.label().bind_text_from(settings.APP_STATUS, 'HQ_MIRROR' if target == 'HQ' else 'EDGE_MIRROR').classes("text-caption").tooltip('Volume mirror status')
     if caller and isinstance(caller, ui.dialog):
         caller.close()
 
@@ -164,24 +165,39 @@ async def asset_cards(target: str):
 
             settings.APP_STATUS[asset["service"]] = settings.APP_STATUS.get(asset["service"], 0) + 1
 
+            # Remove the tile after 30 seconds
+            # ui.timer(30, tileCard.clear, immediate=False, once=True)
             tileCard.on("click", lambda a=asset: show_asset(a)) # pyright: ignore
 
         settings.PROCESSED_ASSETS[target].remove(asset)
         return tileCard
 
 
-# @ui.refreshable
 def asset_list_items(target: str, container: ui.element):
     for asset in settings.PROCESSED_ASSETS[target]:
-        if asset['service'] in ['receive']:
+        if asset['service'] in ['receive']: # for edge assets
             with container:
-                with ui.item(on_click=lambda a=asset: services.asset_request(a)):
+                with ui.item(on_click=lambda a=asset: services.asset_request(a)): # pyright: ignore
                     with ui.item_section():
                         ui.item_label(asset['title'])
                         ui.item_label(asset['description']).props('caption').classes('line-clamp-1').tooltip(asset['description'])
             settings.APP_STATUS[asset["service"]] = settings.APP_STATUS.get(asset["service"], 0) + 1
             settings.PROCESSED_ASSETS[target].remove(asset)
-        elif asset['service'] in ['broadcast', 'response', 'request']:
+        elif asset['service'] in ['broadcast', 'response', 'request']: # skip these so they are displayed by asset_cards
             continue
-        else:
-            container.push(f"{asset['service'].upper()}: {asset['title']} - {asset['description']}")
+        else: # for hq assets
+            container.push(f"{asset['service'].upper()}: {asset['title']} - {asset['description']}") # pyright: ignore
+            settings.APP_STATUS[asset["service"]] = settings.APP_STATUS.get(asset["service"], 0) + 1
+            settings.PROCESSED_ASSETS[target].remove(asset)
+
+
+def show_code(target: str, service: str):
+    with ui.dialog() as show, ui.card().classes("grow overflow-scroll"):
+        ui.label(f"Service: {target} {service}").classes(f"w-full {settings.BGCOLORS[service]}") # TODO: remove, this is for debugging
+        ui.label(f"code: {services.CODE[target].get(service, None)}")
+        ### NOTE TO SELF: check if service name is matching and provide code if it does.
+        # if service in services.CODE[target].keys():
+        #     logger.info("Showing code for %s", service)
+        #     # ui.code(inspect.getsource(services.CODE[target][service])).classes("w-full")
+    show.open()
+    show.on("close", show.clear)

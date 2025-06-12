@@ -24,6 +24,7 @@ We are going to start and explain each service in the following steps.
 FLOW = {
     'HQ': [
         {
+            "name": "feed",
             "title": "Data Ingestion Service",
             "description": """
 We start by generating sample data mocking RSS feed from NASA Image API.
@@ -132,4 +133,3 @@ def welcome():
 
     help.on('close', help.clear)
     return ui.button(icon='help', on_click=help.open).props('unelevated round')
-    

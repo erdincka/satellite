@@ -29,7 +29,9 @@ async def index():
         ui.space()
         pages.app_status(target="edge")
         # Start the demo with services
-        timer = ui.timer(30, pages.edge_services)
+        timer = ui.timer(10, pages.edge_services)
+        # Monitor volume status
+        # ui.timer(5, lambda: utils.volume_mirror_status('EDGE'))
         ui.switch().bind_value_to(timer, 'active').props("checked-icon=check unchecked-icon=pause").bind_visibility_from(app.storage.general, 'ready')
         # ui.button("Start", on_click=pages.edge_services)
 
@@ -37,7 +39,7 @@ async def index():
     # Dashboard
     # with ui.grid(columns=5).classes("w-full"):
     #     ui.timer(0.2, pages.dashboard_tiles)
-    lister = ui.list().props('bordered separator').classes('w-full h-32 overflow-auto')
+    lister = ui.list().props('bordered separator').classes('w-full h-32 overflow-auto sticky top-0')
     ui.timer(2, lambda: pages.asset_list_items('EDGE', lister))
 
     with ui.grid(columns=5).classes('w-full overflow-auto'):

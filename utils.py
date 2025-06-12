@@ -169,7 +169,7 @@ def ai_ask_question(filename: str, question: str):
     # TODO: questions should be checked for malicious content
     image_b64 = image_to_base64(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}")
     ai_response = aiclient.image_query(image_b64=image_b64, prompt=question)
-    logger.info("AI identification for %s: %s", filename, ai_response)
+    logger.info("AI response for q: %s on image %s: %s", question, filename, ai_response)
     return ai_response if ai_response else "Your question remained unanswered!!!"
 
 
@@ -266,11 +266,17 @@ def stream_replication_status(stream: str):
         return False
 
 
-def volume_mirror_status():
-    URL = f"{settings.REST_URL}/volume/list?filter=%5Bvolumename%3D%3D{os.path.basename(settings.EDGE_REPLICATED_VOLUME)}" #&columns=mirrorstatus"
+def volume_mirror_status(source: str):
+    URL = f"{settings.REST_URL}/volume/list?filter=%5Bvolumename%3D%3D{os.path.basename(settings.EDGE_REPLICATED_VOLUME if source == 'HQ' else settings.EDGE_MIRROR_NAME)}" #&columns=mirrorstatus"
     r = httpx.get(URL, auth=(settings.MAPR_USER, settings.MAPR_PASSWORD), verify=False)
     if r.status_code == 200 and r.json().get("status") == "OK":
         logger.debug(r.json())
-        return not r.json()["data"][0].get("mirrorstatus", "3") # mirrorstatus = 0 means success, 1 means failure
+        mirror_percent = r.json()["data"][0].get("mirror-percent-complete", "0") # percentage of last or current mirror operation
+        mirror_status = r.json()["data"][0].get("mirrorstatus", "3") # mirrorstatus = 0 means success, 1 means failure
+        logger.info("Volume mirror status for %s: %s, %s", source, mirror_status, mirror_percent)
+        settings.APP_STATUS["HQ_MIRROR" if source == 'HQ' else "EDGE_MIRROR"] = mirror_percent
+        return not mirror_status
     else:
+        settings.APP_STATUS["HQ_MIRROR" if source == 'HQ' else "EDGE_MIRROR"] = "0"
         logger.error("Failed to retrieve volume mirror status. %s", r.text)
+        return False
