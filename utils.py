@@ -89,28 +89,11 @@ async def run_command(command: str):
     logger.debug(f"Finished cmd: {command}")
 
 
-def load_data(live: bool = True):
-    if live:
-        logger.debug("Getting data from API...")
-        search_terms = ["missile", "earthquake", "tsunami", "oil", "flood", "iraq", "syria", "korea", "pacific"]
-        query = ui.toggle(options=search_terms, clearable=False, value=search_terms[0])
-        return nasa_feed(isLive=True, query=str(query) if query else "")
-    else:
-        logger.debug("Loading data from file...")
-        return nasa_feed(isLive=False)
-
-
-def nasa_feed(isLive: bool, query: str = ""):
-    logger.debug("Loading data, Live: %s, Query: %s", isLive, query)
+def nasa_feed():
+    logger.debug("Loading data")
     data = None
-    if isLive:
-        params = { "media_type": "image", "q": query}
-        r = httpx.get("https://images-api.nasa.gov/search", params=params)
-        if r.status_code == 200:
-            data = r.json()
-    else:
-        with open("images.json", "r") as f:
-            data = json.loads(f.read())
+    with open("images.json", "r") as f:
+        data = json.loads(f.read())
 
     logger.info("Feed assets: %s", len(data['collection']['items']) if data else 0)
 

@@ -27,32 +27,15 @@ def connect_and_configure():
         logger.error(error)
 
 
-def save_from_url(url: str, isLive: bool):
+def save_from_url(url: str):
     filename = url.split("/")[-1]
-    if isLive:
-        logger.info("Downloading %s as %s", url, filename)
-        try:
-            r = httpx.get(url)
-            if r.status_code == 200:
-                # BytesIO(r.content)
-                with open(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}", "wb") as f:
-                    s = f.write(r.content)
-                    logger.debug("Saved %s: %d bytes", filename, s)
-                return filename
-            else:
-                logger.error("Failed to download %s", url)
-                return None
-        except Exception as error:
-            logger.error(error)
-            return None
-    else:
-        logger.debug("Copy %s", filename)
-        try:
-            shutil.copy(f"images/{filename}", f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}")
-            return filename
-        except Exception as error:
-            logger.error(error)
-            return None
+    logger.debug("Copy %s", filename)
+    try:
+        shutil.copy(f"images/{filename}", f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}")
+        return filename
+    except Exception as error:
+        logger.error(error)
+        return None
 
 
 def stream_replication_status(stream: str):

@@ -12,10 +12,7 @@ from utils import LogElementHandler
 import utils
 
 logger = logging.getLogger(__name__)
-
-feed_data = utils.load_data(live=False)
-logger.debug("Loaded %d assets", len(feed_data))
-
+feed_data = utils.nasa_feed()
 
 def toggle_debug():
     app.storage.tab["debug"] = not app.storage.tab["debug"]
@@ -25,8 +22,9 @@ def toggle_debug():
 
 async def hq_services():
     logger.debug("HQ services running...")
+    logger.debug("Loaded %d assets", len(feed_data))
     background_tasks.create(run.io_bound(services.publish_to_pipeline, assets=feed_data.to_dict(orient='records'), count=randint(1, 5)))
-    background_tasks.create(run.io_bound(services.pipeline_to_broadcast, isLive=False))
+    background_tasks.create(run.io_bound(services.pipeline_to_broadcast))
     background_tasks.create(run.io_bound(services.request_listener))
 
 
@@ -196,9 +194,10 @@ def asset_list_items(target: str, container: ui.element):
 
 def show_code(target: str, service: str):
     logger.debug("Showing code for %s %s", target, service)
-    with ui.dialog() as show, ui.card().classes("grow overflow-scroll w-full"):
+    with ui.dialog().props("full-width") as show, ui.card().classes("grow overflow-scroll"):
         ui.label(f"Service: {target} {service}").classes(f"w-full {settings.BGCOLORS[service]}") # TODO: remove, this is for debugging
         # ui.label(f"code: {services.CODE[target].get(service, None)}")
-        ui.code(inspect.getsource(services.CODE[target][service])).classes("w-full")
+        for code in services.CODE[target][service]:
+            ui.code(inspect.getsource(code)).classes("w-full")
     show.open()
     show.on("close", show.clear)
