@@ -6,7 +6,7 @@ RUN apt update && apt install -y git python3-dev gcc tree
 # fix init-script
 RUN sed -i '/after cldb /a         sleep 30; echo mapr | maprlogin password -user mapr' /usr/bin/init-script
 
-EXPOSE 8443 3000 3001 2222
+EXPOSE 9443 8443 3000 3001 8780 12443 2222
 
 COPY . /app
 WORKDIR /app
@@ -18,5 +18,3 @@ ENV CFLAGS=-I/opt/mapr/include
 ENV LDFLAGS=-L/opt/mapr/lib
 RUN . $HOME/.local/bin/env && uv add mapr-streams-python
 RUN git config --global credential.helper store
-
-# CMD ["./LD_LIBRARY_PATH=/opt/mapr/lib uv run hq.py"]

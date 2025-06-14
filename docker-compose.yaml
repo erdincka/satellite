@@ -10,10 +10,13 @@ services:
             - MAPR_TZ=Europe/London
             - TZ=Europe/London
         ports:
-            - "3000:3000"
-            - "3001:3001"
-            - "8443:8443"
-            - "2222:22"
+            - "3000:3000"  ## required to use HQ simulator
+            - "3001:3001"  ## required to use Edge simulator
+            - "9443:9443"  ## optional for Installer UI
+            - "8443:8443"  ## optional for MCS
+            - "8780:8780"  ## optional for Airflow
+            # - "12443:12443"  ## optional for NiFi
+            - "2222:22"  ## optional for SSH
         cap_add:
             - SYS_ADMIN
         privileged: true
