@@ -19,15 +19,22 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-set -e
+# COMPLETE THE SYSTEM START
+echo "System initialization started..."
+sed -i '1,/This container IP/!d' /usr/bin/init-script # remove the while loop at the end
+/usr/bin/init-script
+
+echo "System initialized, starting demo app..."
 
 cd /app
 
-# export LD_LIBRARY_PATH=/opt/mapr/lib # this should be coming from env file
-export UV_ENV_FILE=.env
-export UV_THREADPOOL_SIZE=100
-
-nohup uv run hq.py &
-nohup uv run edge.py &
+if [ "x$1" == "x" ]; then
+    echo "No arguments supplied, starting both simulators"
+    nohup uv run hq.py &
+    nohup uv run edge.py &
+else
+    echo "Starting simulator $1"
+    nohup uv run $1.py &
+fi
 
 tail -f nohup.out # so docker logs will show logs
