@@ -1,4 +1,8 @@
-# Satellite image processing using Data Fabric & AI
+# Real-time pipeline and edge-core event-based communication using Data Fabric & VLM AI
+
+Enables 2 sites communicate through Data Fabric streams and showcases various features of Data Fabric and integration of visual language model (VLM) integration
+
+![App Image](app-image.png "Demo View")
 
 ## Installation
 
