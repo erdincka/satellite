@@ -4,9 +4,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt install -y git python3-dev gcc tree
 
 # fix init-script
-RUN sed -i '/after cldb /a         sleep 30; echo mapr | maprlogin password -user mapr' /usr/bin/init-script
+RUN sed -i '/after cldb /a     sleep 30; echo mapr | maprlogin password -user mapr' /usr/bin/init-script
 
-EXPOSE 9443 8443 3000 3001 8780 12443 2222
+EXPOSE 9443 8443 3000 3001 2222
 
 COPY . /app
 WORKDIR /app

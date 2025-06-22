@@ -1,26 +1,24 @@
 services:
-    satellite:
-        platform: linux/amd64
-        image: erdincka/satellite:latest
-        container_name: satellite
-        restart: unless-stopped
-        environment:
-            - clusterName=maprdemo.io
-            - isSecure=true
-            - MAPR_TZ=Europe/London
-            - TZ=Europe/London
-        ports:
-            - "3000:3000"  ## required to use HQ simulator
-            - "3001:3001"  ## required to use Edge simulator
-            - "9443:9443"  ## optional for Installer UI
-            - "8443:8443"  ## optional for MCS
-            - "8780:8780"  ## optional for Airflow
-            # - "12443:12443"  ## optional for NiFi
-            - "2222:22"  ## optional for SSH
-        cap_add:
-            - SYS_ADMIN
-        privileged: true
-        volumes:
-            - /etc/timezone:/etc/timezone:ro
-            - /etc/localtime:/etc/localtime:ro
-        entrypoint: ["/bin/bash", "-c", "/app/start.sh"]
+  satellite:
+    platform: linux/amd64
+    image: erdincka/satellite:latest
+    container_name: satellite
+    restart: unless-stopped
+    environment:
+      - clusterName=maprdemo.io
+      - isSecure=true
+      - MAPR_TZ=Europe/London
+      - TZ=Europe/London
+    ports:
+      - "3000:3000"  ## required to use HQ simulator
+      - "3001:3001"  ## required to use Edge simulator
+      - "9443:9443"  ## optional for Installer UI
+      - "8443:8443"  ## optional for MCS
+      - "2222:22"  ## optional for SSH
+    cap_add:
+      - SYS_ADMIN
+    privileged: true
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    entrypoint: ["/app/start.sh"]

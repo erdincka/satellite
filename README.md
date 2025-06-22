@@ -18,15 +18,13 @@
 
 Run `docker logs -f satellite`
 
-Watch for output like `This container IP : 172.x.0.2`
+This may take around ~30 minutes on Apple Silicon using emulation, ~10 minutes on x86.
+All ready when you see these lines:
 
-This may take around ~30 minutes on Apple Silicon using emulation, ~15 minutes on x86.
+`NiceGUI ready to go on http://localhost:3000, and http://172.19.0.2:3000`
+`NiceGUI ready to go on http://localhost:3001, and http://172.19.0.2:3001`
 
-## Start the application
-
-For the HQ: `docker exec -it satellite bash -c "UV_ENV_FILE=.env ~/.local/bin/uv run hq.py"`
-For the Edge: `docker exec -it satellite bash -c "UV_ENV_FILE=.env ~/.local/bin/uv run edge.py"`
-
+Open both pages on your browser: `http://localhost:3000` and `http://localhost:3001`
 
 ## TODO
 
@@ -40,8 +38,11 @@ A lot
 
 [ ] Allow using external DF cluster(s)
 
+[ ] Allow configuration and run across two separate containers
+
 
 ## NOTES and OBSOLETE SETTINGS
+
 
 ### Configure and mount NFSv4 (only if using NFSv4)
 
@@ -90,6 +91,15 @@ maprcli volume remove -name satellite -force true
 ## Run the application inside the container
 
 You need two terminal sessions to run the application. One for the HQ and one for the edge.
+
+Initialization is complete when this is shown in the logs: `This container IP : 172.x.0.2`
+
+**Image is set to run both hq and edge simulators, you can manually run simulators using following commands**
+
+For the HQ: `docker exec -it satellite bash -c "UV_ENV_FILE=.env ~/.local/bin/uv run hq.py"`
+For the Edge: `docker exec -it satellite bash -c "UV_ENV_FILE=.env ~/.local/bin/uv run edge.py"`
+
+Or inside the container: `docker exec -it satellite bash` or `ssh -p 2222 mapr@localhost`
 
 `UV_ENV_FILE=.env uv run hq.py`
 
