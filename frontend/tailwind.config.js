@@ -7,9 +7,12 @@ export default {
         edge: { DEFAULT: '#14b8a6', dim: '#0f766e' },
       },
       keyframes: {
-        travel: { '0%': { transform: 'translateX(-6px)', opacity: '0' },
+        // Animate `left`, not `translateX`: a percentage translate is relative to the
+        // dot's own width, so it crossed about a quarter of the lane. Percentages of
+        // `left` are relative to the lane.
+        travel: { '0%': { left: '-1.5rem', opacity: '0' },
                   '15%,85%': { opacity: '1' },
-                  '100%': { transform: 'translateX(calc(100% + 6px))', opacity: '0' } },
+                  '100%': { left: '100%', opacity: '0' } },
         arrive: { '0%': { transform: 'scale(.92)', opacity: '0' },
                   '100%': { transform: 'scale(1)', opacity: '1' } },
       },

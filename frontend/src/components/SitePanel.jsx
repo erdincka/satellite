@@ -26,8 +26,10 @@ export default function SitePanel({ site, accent, onSelect, onRequest, actions }
           {ready && (
             <>
               <button className="btn-ghost !px-2 !py-1 !text-[11px]"
-                      onClick={() => actions.step(side)}
-                      title="Advance one cycle without running continuously">Step</button>
+                      onClick={() => actions.step(side)} disabled={running}
+                      title={running
+                        ? 'Pause first — the pipeline is already advancing on its own'
+                        : 'Advance one cycle'}>Step</button>
               <button className={running ? 'btn-danger !px-2 !py-1 !text-[11px]'
                                          : 'btn-primary !px-2 !py-1 !text-[11px]'}
                       onClick={() => actions.setRunning(side, !running)}>

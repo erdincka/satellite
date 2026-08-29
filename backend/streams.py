@@ -159,23 +159,40 @@ def close_all() -> None:
         _producers.clear()
 
 
-def replication_status(profile: Profile, stream: str) -> tuple[bool | None, str]:
+def replication_status(profile: Profile, stream: str) -> tuple[bool | None, str, int]:
     """Whether this stream's replica is keeping up.
 
-    Returned as (ok, detail) so the UI can show the actual state rather than a bare
-    boolean — during a demo "replicating, 2 MB pending" is more useful than "false".
+    Returns (ok, detail, bytes_pending). Health is the *link state*, not whether the
+    byte counter happens to be zero: under continuous load there is almost always
+    something in flight, and reporting that as a fault made the indicator permanently
+    red during a demo where replication was working perfectly. Bytes in flight are
+    reported as a figure instead, and the lag chart plots them.
     """
     response = profile.rest("stream/replica/list", {"path": stream}, timeout=10)
     if profile.failed(response):
-        return None, "unknown"
+        return None, "unknown", 0
     replicas = response.get("data") or []
     if not replicas:
-        return None, "no replica configured"
+        return None, "no replica configured", 0
 
     replica = replicas[0]
-    uptodate = bool(replica.get("isUptodate"))
-    pending = replica.get("bytesPending", 0)
+    state = replica.get("replicaState", "")
+    pending = int(replica.get("bytesPending", 0) or 0)
+    paused = bool(replica.get("paused"))
     target = replica.get("replicaPath", "?")
-    if uptodate and not pending:
-        return True, f"in sync with {target}"
-    return False, f"{pending} bytes pending to {target}"
+
+    if paused:
+        return False, f"paused — {target}", pending
+    if state != "REPLICA_STATE_REPLICATING":
+        return False, f"{state or 'not replicating'} — {target}", pending
+    if pending or not replica.get("isUptodate"):
+        return True, f"{_bytes(pending)} in flight to {target}", pending
+    return True, f"in sync with {target}", 0
+
+
+def _bytes(n: int) -> str:
+    if n < 1024:
+        return f"{n} B"
+    if n < 1024 ** 2:
+        return f"{n / 1024:.0f} KB"
+    return f"{n / 1024 ** 2:.1f} MB"

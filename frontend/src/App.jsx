@@ -3,6 +3,7 @@ import { api } from './api'
 import { useLiveState } from './useLiveState'
 import AssetDialog from './components/AssetDialog.jsx'
 import ConnectionDialog from './components/ConnectionDialog.jsx'
+import ModelDialog from './components/ModelDialog.jsx'
 import ReplicationLink from './components/ReplicationLink.jsx'
 import SitePanel from './components/SitePanel.jsx'
 import StepsDialog from './components/StepsDialog.jsx'
@@ -61,7 +62,8 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar state={state} connected={connected} notify={notify} onReset={actions.reset} />
+      <TopBar state={state} connected={connected} notify={notify} onReset={actions.reset}
+              onConfigureModel={() => setDialog({ kind: 'model' })} />
 
       <main className="flex flex-1 flex-col gap-3 overflow-auto p-3 lg:flex-row">
         <SitePanel site={hq} accent={ACCENT.HQ} actions={actions}
@@ -81,8 +83,12 @@ export default function App() {
                           onClose={() => setDialog(null)} />
       )}
       {dialog?.kind === 'asset' && (
-        <AssetDialog side={dialog.side} asset={dialog.asset}
-                     onRequest={requestAsset} onClose={() => setDialog(null)} />
+        <AssetDialog side={dialog.side} asset={dialog.asset} model={state.model}
+                     onRequest={requestAsset} onClose={() => setDialog(null)}
+                     onConfigureModel={() => setDialog({ kind: 'model' })} />
+      )}
+      {dialog?.kind === 'model' && (
+        <ModelDialog model={state.model} onClose={() => setDialog(null)} />
       )}
       {steps.open && (
         <StepsDialog title={steps.title} steps={steps.items} busy={steps.busy}
@@ -99,7 +105,7 @@ export default function App() {
   )
 }
 
-function TopBar({ state, connected, notify, onReset }) {
+function TopBar({ state, connected, notify, onReset, onConfigureModel }) {
   const [pace, setPace] = useState(state.pace.interval)
 
   const changePace = async (value) => {
@@ -127,6 +133,14 @@ function TopBar({ state, connected, notify, onReset }) {
         </label>
 
         <span className="text-[11px] text-slate-500">{state.feedSize} sample assets</span>
+
+        <button onClick={onConfigureModel}
+                className={`chip ${state.model?.configured ? 'chip-ok' : 'chip-idle'}`}
+                title={state.model?.configured
+                  ? `Vision model: ${state.model.model} at ${state.model.endpoint}`
+                  : 'No vision model configured — click to set one'}>
+          {state.model?.configured ? state.model.model : 'no vision model'}
+        </button>
 
         <span className={`chip ${connected ? 'chip-ok' : 'chip-bad'}`}>
           {connected ? 'live' : 'reconnecting'}

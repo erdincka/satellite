@@ -37,6 +37,7 @@ class SiteRunner:
         self.ready = False
         self.busy = False
         self.last_error: str | None = None
+        self._pending_bytes = 0
         self._task: asyncio.Task | None = None
 
     @property
@@ -93,9 +94,10 @@ class SiteRunner:
             self.ready = False
             return
 
-        ok, detail = replication
+        ok, detail, pending = replication
         if ok is not None:
             checks["replication"] = (ok, detail)
+        self._pending_bytes = pending
         self.status = checks
         self.ready = ready
 
@@ -120,18 +122,8 @@ class SiteRunner:
             await asyncio.sleep(1)
 
     def _sample_replication_lag(self) -> None:
-        pending = self.status.get("replication")
-        if not pending:
-            return
-        ok, detail = pending
-        # `detail` reads "N bytes pending to <path>" when behind, so lag is 0 when in
-        # sync and the pending byte count otherwise.
-        value = 0.0
-        if not ok:
-            head = detail.split(" ", 1)[0]
-            if head.isdigit():
-                value = float(head)
-        metrics.for_side(self.side).replication_lag.add(value)
+        """Plot bytes in flight to the replica."""
+        metrics.for_side(self.side).replication_lag.add(float(self._pending_bytes))
 
     def start(self) -> None:
         if self._task is None or self._task.done():
@@ -251,7 +243,11 @@ HUB = Hub()
 
 
 def full_state() -> dict:
+    import aiclient
+
+    endpoint, model = aiclient.current()
     return {
+        "model": {"endpoint": endpoint, "model": model, "configured": bool(endpoint)},
         "sites": {side: runner.snapshot() for side, runner in RUNNERS.items()},
         "sameCluster": CONNECTIONS.same_cluster(),
         "feedSize": len(_feed()),

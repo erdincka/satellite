@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api, imageUrl } from '../api'
 import Modal from './Modal.jsx'
 
-export default function AssetDialog({ side, asset, onClose, onRequest }) {
+export default function AssetDialog({ side, asset, model, onClose, onRequest, onConfigureModel }) {
   const [question, setQuestion] = useState('')
   const [thread, setThread] = useState([])
   const [busy, setBusy] = useState(false)
@@ -60,6 +60,20 @@ export default function AssetDialog({ side, asset, onClose, onRequest }) {
 
         <div>
           <div className="label mb-1">Ask the vision model</div>
+          {!model?.configured ? (
+            // Offering an input that can only answer "not configured" is worse than
+            // not offering it: say what is missing and how to fix it.
+            <div className="rounded border border-slate-800 bg-slate-950/60 px-2 py-2
+                            text-[11px] text-slate-500">
+              No vision model configured.{' '}
+              <button onClick={onConfigureModel}
+                      className="text-indigo-400 underline underline-offset-2 hover:text-indigo-300">
+                Set one up
+              </button>{' '}
+              to ask questions about this image.
+            </div>
+          ) : (
+          <>
           <div className="space-y-1.5">
             {thread.map((m, i) => (
               <div key={i} className={`rounded px-2 py-1 text-[12px]
@@ -76,6 +90,8 @@ export default function AssetDialog({ side, asset, onClose, onRequest }) {
                  placeholder="e.g. how many vehicles are visible?"
                  className="mt-1.5 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5
                             text-sm text-slate-200 outline-none focus:border-indigo-500" />
+          </>
+          )}
         </div>
       </div>
     </Modal>
