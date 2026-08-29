@@ -25,6 +25,7 @@ import objectstore
 import provision
 import services
 import settings
+import sites
 from assets import Asset
 from utils import LogElementHandler
 
@@ -40,8 +41,8 @@ logger = logging.getLogger(__name__)
 
 @app.get("/asset/{side}/{key}")
 def _serve_asset(side: str, key: str):
-    bucket = settings.EDGE_BUCKET if side.upper() == "EDGE" else settings.HQ_BUCKET
-    data = objectstore.get_bytes(dfabric.for_side(side), bucket, key)
+    site = sites.for_side(side)
+    data = objectstore.get_bytes(dfabric.for_side(side), site.assets_bucket, key)
     if data is None:
         return Response(status_code=404)
     suffix = key.rsplit(".", 1)[-1].lower()
@@ -116,7 +117,7 @@ async def refresh_status(side: str) -> None:
         results = profile.check()
         # Provisioned is a separate question from reachable: the cluster can be healthy
         # and simply not have the demo's objects yet.
-        return results, provision.is_configured(profile)
+        return results, provision.is_configured(profile, sites.for_side(side))
 
     try:
         checks, ready = await run.io_bound(probe_cluster)
@@ -230,9 +231,7 @@ def show_asset(side: str, asset: Asset) -> None:
                 ui.label(asset.error)
 
         has_image = objectstore.exists(
-            dfabric.for_side(side),
-            settings.EDGE_BUCKET if side.upper() == "EDGE" else settings.HQ_BUCKET,
-            asset.key)
+            dfabric.for_side(side), sites.for_side(side).assets_bucket, asset.key)
         if has_image:
             ui.image(asset_url(side, asset.key)).classes("w-full rounded max-h-96 object-contain")
 
@@ -340,7 +339,10 @@ async def configure_dialog(side: str) -> None:
         profile = dfabric.for_side(side)
 
         def work() -> list[provision.Step]:
-            return list(provision.configure(profile))
+            site = sites.for_side(side)
+            peer = sites.EDGE if side.upper() == "HQ" else None
+            peer_profile = dfabric.EDGE if side.upper() == "HQ" else None
+            return list(provision.configure(profile, site, peer, peer_profile))
 
         steps = await run.io_bound(work)
         with checklist:
@@ -384,7 +386,7 @@ async def reset_dialog(side: str) -> None:
         profile = dfabric.for_side(side)
 
         def work() -> list[provision.Step]:
-            return list(provision.reset(profile))
+            return list(provision.reset(profile, sites.for_side(side)))
 
         steps = await run.io_bound(work)
         assets.HQ_BOARD.clear()
@@ -443,17 +445,18 @@ async def vlm_dialog(side: str) -> None:
 
 async def catalogue_dialog(side: str) -> None:
     """Show the Iceberg table the pipeline has been writing all along."""
-    namespace = "EDGE" if side.upper() == "EDGE" else "HQ"
+    site = sites.for_side(side)
     with ui.dialog().props("full-width") as dialog, ui.card().classes("w-full"):
         with ui.row().classes("w-full items-center justify-between"):
-            ui.label(f"{namespace} catalogue — Iceberg table").classes("text-lg font-medium")
+            ui.label(f"{site.side} catalogue — {site.warehouse_bucket}") \
+                .classes("text-lg font-medium")
             ui.button(icon="close", on_click=dialog.close).props("flat round dense")
         body = ui.column().classes("w-full")
         with body:
             ui.spinner()
 
-    frame = await run.io_bound(iceberger.read_all, namespace)
-    history = await run.io_bound(iceberger.snapshots, namespace)
+    frame = await run.io_bound(iceberger.read_all, site)
+    history = await run.io_bound(iceberger.snapshots, site)
     body.clear()
     with body:
         if frame is None or frame.empty:

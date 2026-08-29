@@ -27,7 +27,7 @@ logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.ERROR)
 
 CATALOG_DB = Path("iceberg.db")
 
-_catalog = None
+_catalog: dict = {}
 _lock = threading.Lock()
 
 # Written for every asset. Declared explicitly rather than inferred from the first
@@ -47,20 +47,22 @@ def forget_catalog() -> None:
     """Drop the cached catalog so the next write rebuilds it. Used after Reset."""
     global _catalog
     with _lock:
-        _catalog = None
+        _catalog.clear()
     try:
         CATALOG_DB.unlink(missing_ok=True)
     except Exception as error:
         logger.warning("Could not remove %s: %s", CATALOG_DB, error)
 
 
-def get_catalog():
+def get_catalog(site):
+    """One catalog per site: each keeps its own warehouse bucket and its own tables."""
     global _catalog
     with _lock:
-        if _catalog is not None:
-            return _catalog
+        cached = _catalog.get(site.side)
+        if cached is not None:
+            return cached
 
-        profile = dfabric.HQ
+        profile = dfabric.for_side(site.side)
         credentials = profile.s3_credentials()
         if not credentials:
             logger.error("No S3 credentials; cannot open the Iceberg catalog")
@@ -69,24 +71,25 @@ def get_catalog():
         try:
             from pyiceberg.catalog.sql import SqlCatalog
 
-            _catalog = SqlCatalog("satellite", **{
+            catalog = SqlCatalog(site.side.lower(), **{
                 "uri": f"sqlite:///{CATALOG_DB}",
-                "warehouse": f"s3://{settings.WAREHOUSE_BUCKET}",
+                "warehouse": f"s3://{site.warehouse_bucket}",
                 "s3.endpoint": profile.s3_endpoint,
                 "s3.access-key-id": credentials["access_key"],
                 "s3.secret-access-key": credentials["secret_key"],
                 "s3.path-style-access": "true",
                 "s3.ssl-verify": "false",
             })
-            logger.debug("Iceberg catalog opened on %s", settings.WAREHOUSE_BUCKET)
-            return _catalog
+            _catalog[site.side] = catalog
+            logger.debug("Iceberg catalog opened on %s", site.warehouse_bucket)
+            return catalog
         except Exception as error:
             logger.error("Could not open the Iceberg catalog: %s", error)
             return None
 
 
-def _table(namespace: str, tablename: str):
-    catalog = get_catalog()
+def _table(site, namespace: str, tablename: str):
+    catalog = get_catalog(site)
     if catalog is None:
         return None
     try:
@@ -102,9 +105,10 @@ def _table(namespace: str, tablename: str):
         return None
 
 
-def write_asset(asset, namespace: str = "HQ", tablename: str = "asset_table") -> bool:
-    """Append one asset to the catalogue."""
-    table = _table(namespace, tablename)
+def write_asset(site, asset, tablename: str = "asset_table") -> bool:
+    """Append one asset to this site's catalogue."""
+    namespace = site.side
+    table = _table(site, namespace, tablename)
     if table is None:
         return False
     try:
@@ -117,27 +121,27 @@ def write_asset(asset, namespace: str = "HQ", tablename: str = "asset_table") ->
         return False
 
 
-def read_all(namespace: str = "HQ", tablename: str = "asset_table"):
+def read_all(site, tablename: str = "asset_table"):
     """Return the catalogue as a DataFrame, or None.
 
     Used by the Catalogue view — the demo writes an Iceberg table on every asset and
     previously never showed it, which left the best evidence of the pipeline invisible.
     """
-    table = _table(namespace, tablename)
+    table = _table(site, site.side, tablename)
     if table is None:
         return None
     try:
         return table.scan().to_pandas()
     except Exception as error:
-        logger.warning("Could not scan %s.%s: %s", namespace, tablename, error)
+        logger.warning("Could not scan %s.%s: %s", site.side, tablename, error)
         return None
 
 
-def snapshots(namespace: str = "HQ", tablename: str = "asset_table") -> list[dict]:
+def snapshots(site, tablename: str = "asset_table") -> list[dict]:
     """Table history — each append is a snapshot, which shows the pipeline's cadence."""
     import datetime
 
-    table = _table(namespace, tablename)
+    table = _table(site, site.side, tablename)
     if table is None:
         return []
     try:
@@ -150,5 +154,5 @@ def snapshots(namespace: str = "HQ", tablename: str = "asset_table") -> list[dic
             for h in table.history()
         ]
     except Exception as error:
-        logger.warning("Could not read history for %s.%s: %s", namespace, tablename, error)
+        logger.warning("Could not read history for %s.%s: %s", site.side, tablename, error)
         return []

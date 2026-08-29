@@ -72,6 +72,7 @@ class Profile:
     # mapr-clusters.conf, which does not exist off-cluster.
     _cluster_name: str | None = field(default=None, repr=False)
     _s3_key: dict | None = field(default=None, repr=False)
+    _client: "httpx.Client | None" = field(default=None, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     @classmethod
@@ -108,6 +109,24 @@ class Profile:
     def auth(self) -> tuple[str, str]:
         return (self.username, self.password)
 
+    def _session(self) -> httpx.Client:
+        """A reusable client that keeps the session cookie.
+
+        Data Fabric issues a session cookie on first authentication and honours it for
+        subsequent calls. Reusing one client keeps the connection pool warm and avoids
+        re-authenticating on every request — the demo polls status every 15 seconds and
+        mints S3 keys on a timer, so that overhead is not hypothetical.
+        """
+        if self._client is None:
+            self._client = httpx.Client(
+                auth=self.auth,
+                verify=self.verify_tls,
+                timeout=30.0,
+                follow_redirects=True,
+                limits=httpx.Limits(max_keepalive_connections=4, max_connections=8),
+            )
+        return self._client
+
     # ------------------------------------------------------------------- REST API
 
     def rest(self, path: str, params: dict | None = None, timeout: float = 30.0,
@@ -121,8 +140,7 @@ class Profile:
         """
         url = f"{self.rest_url}/{path.lstrip('/')}"
         try:
-            r = httpx.request(method, url, params=params or {}, auth=self.auth,
-                              verify=self.verify_tls, timeout=timeout)
+            r = self._session().request(method, url, params=params or {}, timeout=timeout)
         except Exception as error:
             logger.debug("REST %s failed: %s", path, error)
             return {"status": "ERROR", "errors": [{"desc": str(error)}]}

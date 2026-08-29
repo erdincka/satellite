@@ -13,7 +13,7 @@ import inspect
 from nicegui import ui
 
 import services
-import settings
+import sites
 
 OVERVIEW = """
 A field team on a satellite link cannot pull down everything headquarters has. They need
@@ -49,7 +49,7 @@ STEPS = {
     ],
     "EDGE": [
         ("Available", "A description arrived. The image itself is still at HQ. "
-                      "Click a tile to request it.", services.asset_listener),
+                      "Click a tile to request it.", services.broadcast_listener),
         ("Requested", "The request is on its way upstream over the same replicated stream.",
          services.request_asset),
         ("Delivered", "The image has been copied across and can be opened and asked about.",
@@ -87,17 +87,21 @@ def show(side: str) -> None:
         ui.separator()
         with ui.expansion("What this demo creates on the cluster").classes("w-full"):
             ui.markdown(f"""
-| Object | Name |
-|---|---|
-| Volume | `{settings.HQ_VOLUME_NAME}` at `{settings.HQ_VOLUME}` |
-| Volume | `{settings.EDGE_VOLUME_NAME}` at `{settings.EDGE_VOLUME}` |
-| Stream | `{settings.HQ_STREAM}` |
-| Stream replica | `{settings.EDGE_STREAM}` (multi-master) |
-| Bucket | `{settings.HQ_BUCKET}` |
-| Bucket | `{settings.EDGE_BUCKET}` |
-| Bucket | `{settings.WAREHOUSE_BUCKET}` (Iceberg warehouse) |
+Each site owns its objects and creates only its own. Nothing is shared, so the two
+sides behave the same whether they sit on one cluster or two.
 
-**Reset** in the footer removes all of it.
+| | HQ | Edge |
+|---|---|---|
+| Volume | `{sites.HQ.volume_name}` at `{sites.HQ.volume_path}` | `{sites.EDGE.volume_name}` at `{sites.EDGE.volume_path}` |
+| Stream | `{sites.HQ.stream}` | `{sites.EDGE.stream}` |
+| Internal stream | `{sites.HQ.pipeline_stream}` | — |
+| Assets bucket | `{sites.HQ.assets_bucket}` | `{sites.EDGE.assets_bucket}` |
+| Warehouse | `{sites.HQ.warehouse_bucket}` | `{sites.EDGE.warehouse_bucket}` |
+
+The two streams are paired multi-master, so HQ publishes the catalogue on its own
+stream and the edge reads it from its own. Neither side ever attaches to the other's.
+
+**Reset** in the footer removes everything that side owns.
 """).classes("text-sm")
 
     dialog.on("hide", dialog.delete)

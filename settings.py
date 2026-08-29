@@ -23,38 +23,17 @@ EDGE_PORT = int(os.environ.get("EDGE_PORT", "3001"))
 HQ_URL = os.environ.get("HQ_URL", f"http://localhost:{HQ_PORT}")
 EDGE_URL = os.environ.get("EDGE_URL", f"http://localhost:{EDGE_PORT}")
 
-# ------------------------------------------------------------------- cluster layout
-
-HQ_VOLUME_NAME = "satellite"
-HQ_VOLUME = "/apps/satellite"
-EDGE_VOLUME_NAME = "satellite_edge"
-EDGE_VOLUME = "/apps/satellite/edge"
-
-HQ_STREAM = f"{HQ_VOLUME}/hq_stream"
-EDGE_STREAM = f"{EDGE_VOLUME}/edge_stream"
-
-# S3 bucket names must be DNS-compatible, so no underscores here.
-HQ_BUCKET = "satellite-hq-assets"
-EDGE_BUCKET = "satellite-edge-assets"
-WAREHOUSE_BUCKET = "satellite-warehouse"
-
-# Bundled sample imagery, uploaded to HQ_BUCKET during configure.
-IMAGE_ARCHIVE = "downloaded_images.tar"
-FEED_FILE = "images.json"
-
-# ------------------------------------------------------------------------- topics
-
+# --------------------------------------------------------------- what lives where
 #
-# Topic names carry a `satellite_` prefix so a single glob in the cluster's Kafka Wire
-# Protocol mapping rules covers all of them without disturbing other topics on the
-# cluster. Each side's user maps that glob to its own stream, which is what gives HQ and
-# the edge genuinely separate streams with replication carrying data between them.
+# Per-site names (volumes, streams, buckets) live in sites.py, because HQ and the edge
+# own separate sets of them and each side provisions only its own.
 
-TOPIC_PREFIX = "satellite_"
-PIPELINE = f"{TOPIC_PREFIX}pipeline"
-ASSET_TOPIC = f"{TOPIC_PREFIX}assets"
-REQUEST_TOPIC = f"{TOPIC_PREFIX}requests"
-RESPONSE_TOPIC = f"{TOPIC_PREFIX}responses"
+# Bundled sample imagery. Extracted to a local staging directory and uploaded to the HQ
+# bucket as each asset flows through the pipeline, so "Stored" is a real write rather
+# than a lookup of something Configure pre-loaded.
+IMAGE_ARCHIVE = "downloaded_images.tar"
+IMAGE_STAGING = os.environ.get("IMAGE_STAGING", "images")
+FEED_FILE = "images.json"
 
 # --------------------------------------------------------------------- the stages
 #
