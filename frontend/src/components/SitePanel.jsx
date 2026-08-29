@@ -1,18 +1,17 @@
 import Charts from './Charts.jsx'
-import StageBoard from './StageBoard.jsx'
+import StageBoard, { columnCount } from './StageBoard.jsx'
 
 /** One site: its connection, its controls, its pipeline and its metrics. */
 export default function SitePanel({ site, accent, onSelect, onRequest, actions }) {
   const { side, running, ready, status, connection, objects, stages, metrics } = site
   const connected = !!connection.host
 
-  // Width proportional to how many stages the site has: HQ runs six and the edge three,
-  // so an even split would squeeze HQ's labels while leaving the edge slack. Growing by
-  // stage count gives both sites the same column width, and it self-adjusts when a
-  // Failed column appears.
+  // Width proportional to how many columns the site actually renders — transits collapse
+  // into one — so both sites end up with the same column width instead of HQ being
+  // squeezed. Self-adjusts when a Failed column appears.
   return (
     <section className="panel flex min-w-0 flex-col gap-3 p-3"
-             style={{ flexGrow: stages.length, flexBasis: 0 }}>
+             style={{ flexGrow: columnCount(stages), flexBasis: 0 }}>
       <header className="flex flex-wrap items-center gap-2">
         <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: accent }} />
         <h2 className="text-sm font-semibold text-slate-100">

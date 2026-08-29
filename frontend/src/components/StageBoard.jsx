@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { imageUrl } from '../api'
 
 /**
@@ -7,13 +8,99 @@ import { imageUrl } from '../api'
  * one card per stage-event: the point a technical audience needs to see is a single
  * item progressing, not a growing pile of near-identical cards.
  */
+/**
+ * Stages an asset passes *through* rather than rests in.
+ *
+ * In one HQ cycle an asset is stored, catalogued and broadcast inside a single loop
+ * iteration, so occupancy of these three is essentially always zero — they were three
+ * columns permanently reading "idle". They are not slow stages, they are transits, so
+ * they get a compact rail showing rate and totals instead of an empty tile bin. The
+ * stages where assets genuinely dwell — Broadcast, Available, Delivered — keep their
+ * columns, and the pipeline still reads left to right.
+ */
+const TRANSIT = new Set(['pipeline', 'download', 'record'])
+
+/** How many column positions a set of stages occupies once transits are collapsed. */
+export function columnCount(stages) {
+  const transits = stages.filter((s) => TRANSIT.has(s.id)).length
+  return stages.length - transits + (transits ? 1 : 0)
+}
+
 export default function StageBoard({ side, stages, onSelect, onRequest }) {
+  const transits = stages.filter((s) => TRANSIT.has(s.id))
+  const resting = stages.filter((s) => !TRANSIT.has(s.id))
+
   return (
     <div className="flex gap-2 overflow-x-auto pb-1">
-      {stages.map((stage) => (
+      {transits.length > 0 && <TransitRail stages={transits} />}
+      {resting.map((stage) => (
         <Column key={stage.id} side={side} stage={stage}
                 onSelect={onSelect} onRequest={onRequest} />
       ))}
+    </div>
+  )
+}
+
+/**
+ * The transit stages, stacked.
+ *
+ * Each step pulses when its total advances, which is the only honest way to show a
+ * stage nothing ever sits in: you see the throughput, not a phantom queue.
+ */
+function TransitRail({ stages }) {
+  const previous = useRef({})
+  const [pulsing, setPulsing] = useState({})
+
+  useEffect(() => {
+    const moved = {}
+    for (const stage of stages) {
+      if (previous.current[stage.id] !== undefined && stage.total > previous.current[stage.id]) {
+        moved[stage.id] = true
+      }
+      previous.current[stage.id] = stage.total
+    }
+    if (Object.keys(moved).length) {
+      setPulsing(moved)
+      const timer = setTimeout(() => setPulsing({}), 600)
+      return () => clearTimeout(timer)
+    }
+  }, [stages])
+
+  return (
+    <div className="flex min-w-[7rem] flex-1 flex-col gap-1.5">
+      <div className="rounded-md bg-gradient-to-r from-slate-700/80 to-slate-600/60 px-2 py-1"
+           title="Stages an asset passes straight through on its way to being broadcast">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-white">
+          Processing
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        {stages.map((stage) => (
+          <div key={stage.id} title={stage.help}
+               className={`rounded-md border px-2 py-1.5 transition-colors duration-300
+                           ${pulsing[stage.id]
+                             ? 'border-indigo-500/70 bg-indigo-500/15'
+                             : 'border-slate-800 bg-slate-900/70'}`}>
+            <div className="flex items-baseline justify-between gap-1">
+              <span className="truncate text-[10px] uppercase tracking-wide text-slate-400">
+                {stage.label}
+              </span>
+              <span className="shrink-0 text-[11px] font-bold tabular-nums text-slate-200">
+                {stage.total}
+              </span>
+            </div>
+            <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-slate-800">
+              <span className={`block h-full rounded-full bg-indigo-400 transition-all duration-500
+                                ${pulsing[stage.id] ? 'w-full' : 'w-0'}`} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="px-0.5 text-[9px] leading-snug text-slate-600">
+        Passed through, not queued — an asset clears all three in one cycle.
+      </p>
     </div>
   )
 }

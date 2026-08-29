@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from pathlib import Path
 
 import pyarrow as pa
@@ -111,20 +112,40 @@ def _table(site, namespace: str, tablename: str):
         return None
 
 
-def write_asset(site, asset, tablename: str = "asset_table") -> bool:
-    """Append one asset to this site's catalogue."""
+def write_asset(site, asset, tablename: str = "asset_table", attempts: int = 3) -> bool:
+    """Append one asset to this site's catalogue, retrying transient storage errors.
+
+    The S3 gateway occasionally answers an otherwise valid request with a 500, and
+    without a retry that turned a healthy asset into a permanently failed one — a red
+    tile on screen for the rest of the demo, from a blip that cleared in under a second.
+    """
     namespace = site.side
-    table = _table(site, namespace, tablename)
-    if table is None:
-        return False
-    try:
-        record = asset.to_record()
-        table.append(pa.Table.from_pylist([{f.name: record.get(f.name, "") for f in SCHEMA}],
-                                          schema=SCHEMA))
-        return True
-    except Exception as error:
-        logger.error("Could not append %s to %s.%s: %s", asset.key, namespace, tablename, error)
-        return False
+    delay = 0.4
+
+    for attempt in range(1, attempts + 1):
+        try:
+            table = _table(site, namespace, tablename)
+            if table is None:
+                raise RuntimeError("catalogue unavailable")
+            record = asset.to_record()
+            table.append(pa.Table.from_pylist(
+                [{f.name: record.get(f.name, "") for f in SCHEMA}], schema=SCHEMA))
+            if attempt > 1:
+                logger.info("Catalogued %s on attempt %d", asset.key, attempt)
+            return True
+        except Exception as error:
+            if attempt == attempts:
+                logger.error("Could not append %s to %s.%s after %d attempts: %s",
+                             asset.key, namespace, tablename, attempts, error)
+                return False
+            logger.warning("Catalogue write for %s failed (attempt %d/%d), retrying: %s",
+                           asset.key, attempt, attempts, error)
+            # A stale cached catalog is one cause, so drop it before trying again.
+            with _lock:
+                _catalog.pop(site.side, None)
+            time.sleep(delay)
+            delay *= 2
+    return False
 
 
 def read_all(site, tablename: str = "asset_table"):
