@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import logging
 import random
+import time
 
 import assets
-import dfabric
+import metrics
 import iceberger
 import objectstore
 import settings
@@ -27,6 +28,7 @@ import sites
 import streams
 import utils
 from assets import Asset
+from connections import CONNECTIONS
 from sites import EDGE as EDGE_SITE
 from sites import HQ as HQ_SITE
 
@@ -54,24 +56,26 @@ def publish_to_pipeline(count: int = None) -> None:  # type: ignore[assignment]
         asset = Asset.from_record(record)
         if assets.HQ_BOARD.get(asset.key):
             continue  # already in flight; do not duplicate it on the board
-        if streams.produce(dfabric.HQ, HQ_SITE.pipeline_stream, sites.TOPIC_PIPELINE,
+        if streams.produce(CONNECTIONS.profile("HQ"), HQ_SITE.pipeline_stream, sites.TOPIC_PIPELINE,
                            [asset.to_record()]):
             assets.HQ_BOARD.place(asset, "pipeline")
+            metrics.HQ.count("ingested")
         else:
             assets.HQ_BOARD.fail(asset, "Could not publish to the pipeline stream")
 
 
 def pipeline_to_broadcast() -> None:
     """Store, catalogue and broadcast everything waiting on the pipeline."""
-    for record in streams.drain(dfabric.HQ, HQ_SITE.pipeline_stream,
+    for record in streams.drain(CONNECTIONS.profile("HQ"), HQ_SITE.pipeline_stream,
                                 sites.TOPIC_PIPELINE, GROUP_PIPELINE):
         asset = assets.HQ_BOARD.get(record.get("key", "")) or Asset.from_record(record)
 
-        ok, detail = objectstore.store_asset(dfabric.HQ, HQ_SITE, asset.key)
+        ok, detail = objectstore.store_asset(CONNECTIONS.profile("HQ"), HQ_SITE, asset.key)
         if not ok:
             assets.HQ_BOARD.fail(asset, detail)
             continue
         assets.HQ_BOARD.place(asset, "download")
+        metrics.HQ.count("stored")
 
         # Narration is best-effort: a missing or slow vision model must not stop the
         # pipeline, because the demo still tells its story without it.
@@ -81,17 +85,23 @@ def pipeline_to_broadcast() -> None:
             assets.HQ_BOARD.fail(asset, "Could not write to the Iceberg table")
             continue
         assets.HQ_BOARD.place(asset, "record")
+        metrics.HQ.count("catalogued")
 
-        if streams.produce(dfabric.HQ, HQ_SITE.stream, sites.TOPIC_BROADCASTS,
+        if streams.produce(CONNECTIONS.profile("HQ"), HQ_SITE.stream, sites.TOPIC_BROADCASTS,
                            [asset.to_record()]):
             assets.HQ_BOARD.place(asset, "broadcast")
+            metrics.HQ.count("broadcast")
+            # End to end: the moment the feed picked it up, to the moment every edge
+            # site could learn about it.
+            first = asset.history[0][1] if asset.history else asset.entered_stage
+            metrics.HQ.record_latency(time.time() - first)
         else:
             assets.HQ_BOARD.fail(asset, "Could not broadcast to edge sites")
 
 
 def request_listener() -> None:
     """Answer edge requests: deliver the asset, then confirm on the stream."""
-    for record in streams.drain(dfabric.HQ, HQ_SITE.stream,
+    for record in streams.drain(CONNECTIONS.profile("HQ"), HQ_SITE.stream,
                                 sites.TOPIC_REQUESTS, GROUP_REQUESTS):
         if record.get("status") != "requested":
             continue
@@ -101,13 +111,20 @@ def request_listener() -> None:
         assets.HQ_BOARD.place(asset, "request")
 
         ok, detail = objectstore.deliver_to_edge(
-            dfabric.HQ, HQ_SITE, dfabric.EDGE, EDGE_SITE, asset.key)
+            CONNECTIONS.profile("HQ"), HQ_SITE, CONNECTIONS.profile("EDGE"), EDGE_SITE, asset.key)
+        if ok:
+            metrics.HQ.count("delivered")
+            # detail reads "<n> KB delivered"; record the bytes actually spent on the link.
+            try:
+                metrics.HQ.record_bytes(int(float(detail.split()[0]) * 1024))
+            except (ValueError, IndexError):
+                pass
         if not ok:
             assets.HQ_BOARD.fail(asset, detail)
             continue
 
         asset.status = "delivered"
-        if streams.produce(dfabric.HQ, HQ_SITE.stream, sites.TOPIC_RESPONSES,
+        if streams.produce(CONNECTIONS.profile("HQ"), HQ_SITE.stream, sites.TOPIC_RESPONSES,
                            [asset.to_record()]):
             assets.HQ_BOARD.place(asset, "response")
         else:
@@ -126,7 +143,7 @@ def hq_cycle() -> None:
 
 def broadcast_listener() -> None:
     """Receive descriptions from HQ and record them in the edge's own catalogue."""
-    for record in streams.drain(dfabric.EDGE, EDGE_SITE.stream,
+    for record in streams.drain(CONNECTIONS.profile("EDGE"), EDGE_SITE.stream,
                                 sites.TOPIC_BROADCASTS, GROUP_BROADCASTS):
         asset = Asset.from_record(record, stage="receive")
         if assets.EDGE_BOARD.get(asset.key):
@@ -134,6 +151,7 @@ def broadcast_listener() -> None:
 
         if iceberger.write_asset(EDGE_SITE, asset):
             assets.EDGE_BOARD.place(asset, "receive")
+            metrics.EDGE.count("received")
         else:
             assets.EDGE_BOARD.fail(asset, "Could not write to the edge catalogue")
 
@@ -141,9 +159,10 @@ def broadcast_listener() -> None:
 def request_asset(asset: Asset) -> bool:
     """Ask HQ for the full image. Called when a presenter clicks an available asset."""
     asset.status = "requested"
-    if streams.produce(dfabric.EDGE, EDGE_SITE.stream, sites.TOPIC_REQUESTS,
+    if streams.produce(CONNECTIONS.profile("EDGE"), EDGE_SITE.stream, sites.TOPIC_REQUESTS,
                        [asset.to_record()]):
         assets.EDGE_BOARD.place(asset, "request")
+        metrics.EDGE.count("requested")
         return True
     assets.EDGE_BOARD.fail(asset, "Could not send the request upstream")
     return False
@@ -151,13 +170,14 @@ def request_asset(asset: Asset) -> bool:
 
 def response_listener() -> None:
     """Notice HQ's confirmations that an asset has landed in the edge's bucket."""
-    for record in streams.drain(dfabric.EDGE, EDGE_SITE.stream,
+    for record in streams.drain(CONNECTIONS.profile("EDGE"), EDGE_SITE.stream,
                                 sites.TOPIC_RESPONSES, GROUP_RESPONSES):
         if record.get("status") != "delivered":
             continue
         asset = assets.EDGE_BOARD.get(record.get("key", "")) or Asset.from_record(record)
         asset.status = "delivered"
         assets.EDGE_BOARD.place(asset, "response")
+        metrics.EDGE.count("delivered")
 
 
 def edge_cycle() -> None:

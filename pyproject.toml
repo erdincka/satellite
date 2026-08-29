@@ -8,9 +8,9 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    # Data Fabric access, all over the network - no native client required.
+    # Data Fabric access: REST and S3 over the network, streams via the native client.
     "boto3>=1.35.0",          # S3 gateway (assets + iceberg warehouse)
-    "confluent-kafka>=2.6.0", # Streams via the Kafka Wire Protocol gateway
+    "mapr-streams-python>=2.6.0", # Streams via the native client (needs /opt/mapr)
     "httpx>=0.28.1",          # REST apiserver
     "nicegui>=2.18.0",
     "openai>=1.82.0",

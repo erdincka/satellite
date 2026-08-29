@@ -1,27 +1,37 @@
 """
 Names, layout and presentation constants for the demo.
 
-Connection details live in dfabric.py. Nothing here touches the local filesystem: the
-cluster name is resolved from the cluster itself, not read from a mapr-clusters.conf
-that only exists on a node with the native client installed.
+Cluster connections live in connections.py and are configurable at runtime. Nothing
+here reads the local filesystem for cluster details: the cluster name comes from the
+cluster itself, not from a mapr-clusters.conf that only exists on a node.
 """
 
 import logging
 import os
+from pathlib import Path
+
+# Current botocore adds CRC32 checksums and aws-chunked encoding by default, which the
+# Data Fabric S3 gateway rejects (XAmzContentSHA256Mismatch) on every upload. Set before
+# any boto3 or s3fs client is constructed.
+os.environ.setdefault("AWS_REQUEST_CHECKSUM_CALCULATION", "when_required")
+os.environ.setdefault("AWS_RESPONSE_CHECKSUM_VALIDATION", "when_required")
 
 TITLE = "Satellite"
 HQ_TITLE = "HQ — Command & Control"
 EDGE_TITLE = "Edge — Mission Control"
 
-# NiceGUI signs its browser storage cookie with this. Override in any deployment that
-# is reachable by someone you would not hand a shell to.
-STORAGE_SECRET = os.environ.get("STORAGE_SECRET", "ezmer@1r0cks")
+BIND_HOST = os.environ.get("BIND_HOST", "0.0.0.0")
+PORT = int(os.environ.get("PORT", "8080"))
 
-HQ_PORT = int(os.environ.get("HQ_PORT", "3000"))
-EDGE_PORT = int(os.environ.get("EDGE_PORT", "3001"))
-# Shown on each page so a presenter can jump to the other site.
-HQ_URL = os.environ.get("HQ_URL", f"http://localhost:{HQ_PORT}")
-EDGE_URL = os.environ.get("EDGE_URL", f"http://localhost:{EDGE_PORT}")
+# How often the server pushes a state snapshot to connected browsers, and how often it
+# re-probes each cluster. Status is cached between probes so the interface never waits
+# on the cluster to render.
+PUSH_INTERVAL = float(os.environ.get("PUSH_INTERVAL", "1"))
+STATUS_INTERVAL = int(os.environ.get("STATUS_INTERVAL", "15"))
+
+# Vision model defaults; both are changeable at runtime from the interface.
+AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "")   # empty disables narration
+AI_MODEL = os.environ.get("AI_MODEL", "llava-v1.5")
 
 # --------------------------------------------------------------- what lives where
 #
@@ -31,9 +41,12 @@ EDGE_URL = os.environ.get("EDGE_URL", f"http://localhost:{EDGE_PORT}")
 # Bundled sample imagery. Extracted to a local staging directory and uploaded to the HQ
 # bucket as each asset flows through the pipeline, so "Stored" is a real write rather
 # than a lookup of something Configure pre-loaded.
-IMAGE_ARCHIVE = "downloaded_images.tar"
-IMAGE_STAGING = os.environ.get("IMAGE_STAGING", "images")
-FEED_FILE = "images.json"
+# Resolved against the app root (the parent of backend/) so the server can be started
+# from any working directory.
+_ROOT = Path(__file__).resolve().parent.parent
+IMAGE_ARCHIVE = str(_ROOT / "downloaded_images.tar")
+IMAGE_STAGING = os.environ.get("IMAGE_STAGING", str(_ROOT / "images"))
+FEED_FILE = str(_ROOT / "images.json")
 
 # --------------------------------------------------------------------- the stages
 #

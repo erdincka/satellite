@@ -1,0 +1,146 @@
+import { useCallback, useState } from 'react'
+import { api } from './api'
+import { useLiveState } from './useLiveState'
+import AssetDialog from './components/AssetDialog.jsx'
+import ConnectionDialog from './components/ConnectionDialog.jsx'
+import ReplicationLink from './components/ReplicationLink.jsx'
+import SitePanel from './components/SitePanel.jsx'
+import StepsDialog from './components/StepsDialog.jsx'
+
+const ACCENT = { HQ: '#6366f1', EDGE: '#14b8a6' }
+
+export default function App() {
+  const { state, connected } = useLiveState()
+  const [dialog, setDialog] = useState(null)
+  const [steps, setSteps] = useState({ open: false, title: '', items: [], busy: false })
+  const [toast, setToast] = useState(null)
+
+  const notify = useCallback((text, bad) => {
+    setToast({ text, bad })
+    setTimeout(() => setToast(null), 4000)
+  }, [])
+
+  const runSteps = async (title, promise) => {
+    setSteps({ open: true, title, items: [], busy: true })
+    try {
+      const { steps: items } = await promise
+      setSteps({ open: true, title, items, busy: false })
+      const failed = items.filter((s) => !s.ok).length
+      if (failed) notify(`${failed} step(s) failed`, true)
+    } catch (e) {
+      setSteps({ open: false, title, items: [], busy: false })
+      notify(String(e.message), true)
+    }
+  }
+
+  const actions = {
+    editConnection: (side) => setDialog({ kind: 'connection', side }),
+    setRunning: (side, value) => api.setRunning(side, value).catch((e) => notify(e.message, true)),
+    step: (side) => api.step(side).catch((e) => notify(e.message, true)),
+    configure: (side) => runSteps(`Preparing ${side}`, api.configure(side)),
+    reset: (side) => runSteps(`Resetting ${side}`, api.reset(side)),
+  }
+
+  const requestAsset = async (asset) => {
+    try {
+      await api.request(asset.key)
+      notify(`Requested “${asset.title}”`)
+    } catch (e) { notify(String(e.message), true) }
+  }
+
+  if (!state) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-slate-500">
+        {connected ? 'Loading…' : 'Connecting to the server…'}
+      </div>
+    )
+  }
+
+  const hq = state.sites.HQ
+  const edge = state.sites.EDGE
+
+  return (
+    <div className="flex h-full flex-col">
+      <TopBar state={state} connected={connected} notify={notify} onReset={actions.reset} />
+
+      <main className="flex flex-1 flex-col gap-3 overflow-auto p-3 lg:flex-row">
+        <SitePanel site={hq} accent={ACCENT.HQ} actions={actions}
+                   onSelect={(a) => setDialog({ kind: 'asset', side: 'HQ', asset: a })}
+                   onRequest={requestAsset} />
+
+        <ReplicationLink hq={hq} edge={edge} sameCluster={state.sameCluster} />
+
+        <SitePanel site={edge} accent={ACCENT.EDGE} actions={actions}
+                   onSelect={(a) => setDialog({ kind: 'asset', side: 'EDGE', asset: a })}
+                   onRequest={requestAsset} />
+      </main>
+
+      {dialog?.kind === 'connection' && (
+        <ConnectionDialog side={dialog.side}
+                          connection={state.sites[dialog.side].connection}
+                          onClose={() => setDialog(null)} />
+      )}
+      {dialog?.kind === 'asset' && (
+        <AssetDialog side={dialog.side} asset={dialog.asset}
+                     onRequest={requestAsset} onClose={() => setDialog(null)} />
+      )}
+      {steps.open && (
+        <StepsDialog title={steps.title} steps={steps.items} busy={steps.busy}
+                     onClose={() => setSteps({ ...steps, open: false })} />
+      )}
+      {toast && (
+        <div className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md px-3 py-2
+                         text-sm shadow-lg ${toast.bad ? 'bg-rose-700 text-white'
+                                                       : 'bg-slate-800 text-slate-100'}`}>
+          {toast.text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TopBar({ state, connected, notify, onReset }) {
+  const [pace, setPace] = useState(state.pace.interval)
+
+  const changePace = async (value) => {
+    setPace(value)
+    try { await api.setPace({ interval: Number(value) }) }
+    catch (e) { notify(String(e.message), true) }
+  }
+
+  return (
+    <header className="flex flex-wrap items-center gap-3 border-b border-slate-800
+                       bg-slate-900/80 px-4 py-2">
+      <div className="flex items-baseline gap-2">
+        <span className="text-sm font-semibold tracking-tight text-slate-100">Satellite</span>
+        <span className="hidden text-[11px] text-slate-500 sm:inline">
+          core to edge on HPE Ezmeral Data Fabric
+        </span>
+      </div>
+
+      <div className="ml-auto flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          Pace
+          <input type="range" min="2" max="30" step="1" value={pace}
+                 onChange={(e) => changePace(e.target.value)} className="w-24 accent-indigo-500" />
+          <span className="w-8 tabular-nums text-slate-300">{pace}s</span>
+        </label>
+
+        <span className="text-[11px] text-slate-500">{state.feedSize} sample assets</span>
+
+        <span className={`chip ${connected ? 'chip-ok' : 'chip-bad'}`}>
+          {connected ? 'live' : 'reconnecting'}
+        </span>
+
+        <div className="flex gap-1">
+          <button className="btn-ghost !px-2 !py-1 !text-[11px]" onClick={() => onReset('EDGE')}>
+            Reset edge
+          </button>
+          <button className="btn-ghost !px-2 !py-1 !text-[11px]" onClick={() => onReset('HQ')}>
+            Reset HQ
+          </button>
+        </div>
+      </div>
+    </header>
+  )
+}

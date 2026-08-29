@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660" font-family="Inter, Helvetica, Arial, sans-serif">
+  <rect width="1200" height="660" fill="#020617"/>
+  <style>
+    .t   { fill:#e2e8f0; font-size:15px }
+    .s   { fill:#94a3b8; font-size:12px }
+    .xs  { fill:#64748b; font-size:11px }
+    .hd  { fill:#f1f5f9; font-size:17px; font-weight:600 }
+    .mono{ fill:#94a3b8; font-size:11px; font-family:ui-monospace,Menlo,monospace }
+    .box { fill:#0f172a; stroke:#1e293b; rx:8 }
+    .lane{ stroke-width:2; fill:none }
+  </style>
+
+  <text x="40" y="42" class="hd">Satellite — one service, two Data Fabric sites</text>
+  <text x="40" y="64" class="s">Each site owns its volume, streams and buckets. Data crosses only through stream replication.</text>
+
+  <!-- HQ -->
+  <rect x="40" y="95" width="420" height="360" class="box" stroke="#4338ca"/>
+  <rect x="40" y="95" width="420" height="30" fill="#4338ca" rx="8"/>
+  <text x="56" y="115" class="t" font-weight="600">Headquarters</text>
+  <text x="56" y="150" class="s">Ingests imagery, catalogues it, broadcasts descriptions</text>
+
+  <rect x="56" y="168" width="180" height="46" class="box"/>
+  <text x="68" y="188" class="t" font-size="13">1 · Ingested</text>
+  <text x="68" y="204" class="xs">announced on hq-pipeline</text>
+
+  <rect x="264" y="168" width="180" height="46" class="box"/>
+  <text x="276" y="188" class="t" font-size="13">2 · Stored</text>
+  <text x="276" y="204" class="xs">uploaded to hq-assets (S3)</text>
+
+  <rect x="56" y="226" width="180" height="46" class="box"/>
+  <text x="68" y="246" class="t" font-size="13">3 · Catalogued</text>
+  <text x="68" y="262" class="xs">Iceberg row + AI narration</text>
+
+  <rect x="264" y="226" width="180" height="46" class="box"/>
+  <text x="276" y="246" class="t" font-size="13">4 · Broadcast</text>
+  <text x="276" y="262" class="xs">description onto hq-stream</text>
+
+  <text x="56" y="304" class="xs">CLUSTER OBJECTS</text>
+  <text x="56" y="324" class="mono">volume  satellite-hq</text>
+  <text x="56" y="342" class="mono">stream  /apps/satellite-hq/hq-stream</text>
+  <text x="56" y="360" class="mono">stream  /apps/satellite-hq/hq-pipeline</text>
+  <text x="56" y="378" class="mono">bucket  hq-assets</text>
+  <text x="56" y="396" class="mono">bucket  hq-warehouse</text>
+  <text x="56" y="428" class="xs">hq-pipeline is internal and not replicated</text>
+
+  <!-- Edge -->
+  <rect x="740" y="95" width="420" height="360" class="box" stroke="#0f766e"/>
+  <rect x="740" y="95" width="420" height="30" fill="#0f766e" rx="8"/>
+  <text x="756" y="115" class="t" font-weight="600">Edge site</text>
+  <text x="756" y="150" class="s">Browses descriptions, requests only what is worth the link</text>
+
+  <rect x="756" y="168" width="180" height="46" class="box"/>
+  <text x="768" y="188" class="t" font-size="13">A · Available</text>
+  <text x="768" y="204" class="xs">description only</text>
+
+  <rect x="964" y="168" width="180" height="46" class="box"/>
+  <text x="976" y="188" class="t" font-size="13">B · Requested</text>
+  <text x="976" y="204" class="xs">operator spends bandwidth</text>
+
+  <rect x="756" y="226" width="180" height="46" class="box"/>
+  <text x="768" y="246" class="t" font-size="13">C · Delivered</text>
+  <text x="768" y="262" class="xs">image in edge-assets</text>
+
+  <rect x="964" y="226" width="180" height="46" class="box"/>
+  <text x="976" y="246" class="t" font-size="13">Ask the model</text>
+  <text x="976" y="262" class="xs">questions about the image</text>
+
+  <text x="756" y="304" class="xs">CLUSTER OBJECTS</text>
+  <text x="756" y="324" class="mono">volume  satellite-edge</text>
+  <text x="756" y="342" class="mono">stream  /apps/satellite-edge/edge-stream</text>
+  <text x="756" y="360" class="mono">bucket  edge-assets</text>
+  <text x="756" y="378" class="mono">bucket  edge-warehouse</text>
+  <text x="756" y="428" class="xs">never attaches to HQ's stream</text>
+
+  <!-- Link -->
+  <text x="600" y="150" class="s" text-anchor="middle" font-weight="600">Data Fabric</text>
+  <text x="600" y="168" class="s" text-anchor="middle" font-weight="600">replication</text>
+
+  <line x1="470" y1="196" x2="730" y2="196" class="lane" stroke="#10b981"/>
+  <polygon points="730,196 720,191 720,201" fill="#10b981"/>
+  <text x="600" y="188" class="xs" text-anchor="middle" fill="#10b981">descriptions · continuous</text>
+
+  <line x1="730" y1="244" x2="470" y2="244" class="lane" stroke="#f59e0b"/>
+  <polygon points="470,244 480,239 480,249" fill="#f59e0b"/>
+  <text x="600" y="236" class="xs" text-anchor="middle" fill="#f59e0b">requests · on demand</text>
+
+  <line x1="470" y1="292" x2="730" y2="292" class="lane" stroke="#fb923c" stroke-dasharray="6 5"/>
+  <polygon points="730,292 720,287 720,297" fill="#fb923c"/>
+  <text x="600" y="284" class="xs" text-anchor="middle" fill="#fb923c">imagery · only when asked</text>
+
+  <text x="600" y="340" class="xs" text-anchor="middle">multi-master pair</text>
+  <text x="600" y="358" class="xs" text-anchor="middle">one link, both directions</text>
+
+  <!-- Server -->
+  <rect x="40" y="500" width="1120" height="120" class="box" stroke="#334155"/>
+  <text x="56" y="526" class="t" font-weight="600">One service</text>
+  <text x="56" y="548" class="s">FastAPI · services run on the server, state pushed to the browser over WebSocket</text>
+  <text x="56" y="574" class="mono">REST :8443 — volumes, streams, topics, status</text>
+  <text x="440" y="574" class="mono">CLDB :7222 — streams, native client</text>
+  <text x="800" y="574" class="mono">S3 :9000 — imagery, Iceberg warehouse</text>
+  <text x="56" y="598" class="xs">Both sites may point at the same cluster; they stay separate by name.</text>
+</svg>

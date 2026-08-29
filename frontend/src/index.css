@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark by default: this is shown on projectors and large screens in dim rooms, where a
+   light interface glares. */
+:root { color-scheme: dark; }
+
+body {
+  @apply bg-slate-950 text-slate-200 antialiased;
+  font-feature-settings: 'tnum' 1;
+}
+
+@layer components {
+  .panel { @apply rounded-lg border border-slate-800 bg-slate-900/60; }
+  .chip  { @apply inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium; }
+  .chip-ok   { @apply bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30; }
+  .chip-bad  { @apply bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30; }
+  .chip-idle { @apply bg-slate-500/15 text-slate-400 ring-1 ring-slate-500/30; }
+  .btn { @apply rounded-md px-3 py-1.5 text-sm font-medium transition disabled:opacity-40
+                disabled:cursor-not-allowed; }
+  .btn-primary { @apply btn bg-indigo-600 hover:bg-indigo-500 text-white; }
+  .btn-ghost   { @apply btn bg-slate-800/70 hover:bg-slate-700 text-slate-200; }
+  .btn-danger  { @apply btn bg-rose-700/80 hover:bg-rose-600 text-white; }
+  .label { @apply text-[10px] uppercase tracking-wider text-slate-500; }
+}
+
+/* Thin scrollbars: stage columns scroll, and default bars are visually loud. */
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-thumb { @apply rounded bg-slate-700; }
+*::-webkit-scrollbar-track { background: transparent; }

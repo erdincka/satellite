@@ -18,7 +18,7 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ENDPOINT = "http://host.docker.internal:8080/v1"
+DEFAULT_ENDPOINT = ""
 DEFAULT_MODEL = "llava-v1.5"
 
 _lock = threading.Lock()
@@ -62,6 +62,11 @@ def image_query(image_bytes: bytes | None, prompt: str = "Describe the image") -
     """
     if not image_bytes:
         return False, "No image data"
+    endpoint, _ = current()
+    if not endpoint:
+        # Narration is optional. Without an endpoint, say so once rather than
+        # repeatedly failing against whatever happens to be on the default port.
+        return False, "No vision model configured"
 
     import base64
 
@@ -100,6 +105,8 @@ def check(timeout: float = 4.0) -> tuple[bool, str]:
     — and with it the cluster pills, which have nothing to do with the model.
     """
     endpoint, model = current()
+    if not endpoint:
+        return False, "not configured"
     try:
         probe = OpenAI(base_url=endpoint, api_key="not-used", timeout=timeout, max_retries=0)
         names = [m.id for m in probe.models.list()]

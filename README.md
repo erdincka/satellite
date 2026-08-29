@@ -6,52 +6,79 @@ need to know what *exists*, and then choose the few things worth spending bandwi
 it, and broadcasts lightweight *descriptions* to every edge site; the edge browses those
 descriptions and requests the handful it actually wants; only then does the imagery
 itself get copied. A vision model can then describe what arrived, so an operator gets an
-answer without opening every file. It is built on
-[HPE Ezmeral Data Fabric](https://www.hpe.com/us/en/hpe-ezmeral-data-fabric.html)
-streams, object storage and Iceberg, and it is a useful reference for anyone designing
-for intermittent connectivity — disaster response, maritime, remote industrial sites —
-where the real design problem is deciding what crosses the link.
+answer without opening every file.
 
-![HQ and edge side by side: HQ broadcasting assets, the edge requesting one and receiving it](app-image.png)
+It is built on [HPE Ezmeral Data Fabric](https://www.hpe.com/us/en/hpe-ezmeral-data-fabric.html)
+stream replication, object storage and Iceberg, and it is a useful reference for anyone
+designing for intermittent connectivity — disaster response, maritime, remote industrial
+sites — where the real design problem is deciding what crosses the link.
+
+![One page: headquarters on the left, the edge on the right, and the live Data Fabric replication link between them](app-image.png)
 
 ## How it works
 
-![Regional HQ ingests, catalogues and broadcasts; the edge requests, and only then is the image copied across](core-edge.png)
+![HQ ingests, stores, catalogues and broadcasts; descriptions replicate to the edge continuously, requests travel back, and imagery crosses only on request](core-edge.png)
 
-At HQ, an asset moves through four stages, each handing off to the next over a stream:
-**Ingested** announces that an asset exists, **Downloaded** takes custody of the bytes,
-**Catalogued** appends its metadata and AI narration to an Iceberg table, and
-**Broadcast** publishes the description to every edge site.
+Each site owns its objects and attaches only to its own stream:
 
-That stream is **multi-master**. HQ publishes descriptions outward, edge sites publish
-requests back, and a single replicated stream carries both directions — so neither side
-needs a route to the other's storage.
+| | HQ | Edge |
+|---|---|---|
+| Volume | `satellite-hq` at `/apps/satellite-hq` | `satellite-edge` at `/apps/satellite-edge` |
+| Stream | `/apps/satellite-hq/hq-stream` | `/apps/satellite-edge/edge-stream` |
+| Internal stream | `/apps/satellite-hq/hq-pipeline` | — |
+| Assets bucket | `hq-assets` | `edge-assets` |
+| Iceberg warehouse | `hq-warehouse` | `edge-warehouse` |
 
-Bulk data moves separately, and only on request. The description is cheap and travels
+**Neither side ever reads or writes the other's stream.** The two streams are paired
+multi-master, so HQ publishes the catalogue onto its own stream and the edge reads it
+from its own; edge requests travel back the same way. Data crosses between the sites
+only through Data Fabric replication — which is the mechanism the demo exists to show.
+
+At HQ an asset moves through four stages, each handing off over HQ's internal pipeline
+stream: **Ingested** announces that an asset exists, **Stored** uploads the actual bytes
+to HQ's bucket, **Catalogued** appends metadata and the AI narration to an Iceberg
+table, and **Broadcast** publishes the description. HQ's internal chatter stays on a
+separate, unreplicated stream — it is HQ's business, and pushing it down the link would
+undercut the point.
+
+Bulk data moves separately and only on request. The description is cheap and travels
 continuously; the image is expensive and travels only when a field team asks for it.
-That separation is the whole point.
 
-The interface is a **stage board**: each stage is a column, and an asset is one tile that
-moves left to right as it progresses. Columns are capped, so the demo can run for an
-hour without the page growing without bound.
+## The interface
+
+One page, both sites side by side, with the **Data Fabric link** between them — that
+centre column is the point of the demo: descriptions flowing outward continuously,
+requests coming back, and imagery crossing only when a field team asks for it, with the
+replication state read from the cluster rather than inferred.
+
+Each site shows its pipeline as a **stage board**: an asset is one tile that moves left
+to right between stages, columns are capped, and throughput and end-to-end latency are
+charted underneath.
+
+The demo runs on the **server**, not in the browser. Close the tab and the pipeline
+keeps going; reopen it and the interface resynchronises. State is pushed over a
+WebSocket, so nothing polls.
 
 ## What you need
 
-A reachable Data Fabric cluster (7.x or 8.x) with these services, all of which a default
-install provides:
+A reachable Data Fabric cluster (7.x or 8.x) with:
 
 | Service | Port | Used for |
 |---|---|---|
-| `apiserver` | 8443 | Creating volumes, streams and topics; status |
-| `data-access-gateway` | 9092 | Streams, over the Kafka Wire Protocol |
+| `apiserver` | 8443 | Creating volumes, streams, topics; status |
+| `cldb` | 7222 | Streams, via the native client |
 | `s3server` | 9000 | Imagery and the Iceberg warehouse |
 
-**No MapR client is required.** The app talks to the cluster entirely over the network,
-so it runs on a laptop with nothing installed but Python. It never needs `/opt/mapr`, a
-FUSE or NFS mount, or `maprcli`.
-
-S3 credentials are minted on demand via `s3keys gentempkey` and refreshed as they
+S3 credentials are minted per-user with `s3keys gentempkey` and refreshed as they
 expire, so there are no long-lived object-store secrets to store or rotate.
+
+The demo ships as a container built on `maprtech/pacc`, because streams need the Data
+Fabric client libraries. It does **not** need a FUSE/NFS mount and never calls
+`maprcli` — provisioning is REST and assets are S3.
+
+**HQ and the edge may point at the same cluster.** They stay separate by volume, stream
+and bucket, so the demo behaves identically whether you have one cluster or two.
+
 
 ## Run it
 
@@ -59,122 +86,88 @@ expire, so there are no long-lived object-store secrets to store or rotate.
 cp .env.example .env
 ```
 
-Edit `.env` to point at your cluster, then start the two sites in separate terminals:
+Set `DF_HOST` and credentials in `.env`, then:
 
 ```bash
-UV_ENV_FILE=.env uv run hq.py
+docker compose up --build -d
 ```
 
-```bash
-UV_ENV_FILE=.env uv run edge.py
-```
+Then open <http://localhost:8080>. Set `PORT` in `.env` if 8080 is taken.
 
-| Site | URL |
-|---|---|
-| HQ — Command & Control | <http://localhost:3000> |
-| Edge — Mission Control | <http://localhost:3001> |
+Each site's cluster can also be set from the interface — click the host next to a site's
+name — so you can repoint the demo at a customer's cluster without restarting anything.
 
-On first run, HQ shows a **Configure** banner. That creates the volumes, streams, topics
-and buckets, and uploads the sample imagery — roughly a minute, reported step by step.
-It is idempotent, so it is safe to run again if a step fails.
+On first run each site offers **Prepare**. Do the **edge first** (its volume and
+buckets), then **HQ** (its volume and buckets, the streams and topics, and the
+replication pair). Every step is reported and it is safe to re-run.
 
-Then turn on **Run services** at HQ, and again at the edge. Assets begin flowing. On the
-edge, click any tile under **Available** to request the full image; it appears under
-**Delivered**, where you can open it and ask the vision model about it.
+Then press **Run** on each site. Assets begin flowing. On the edge, click **Request
+image** on any available tile; it arrives under Delivered, where you can open it and ask
+the vision model about it. **Step** advances a single cycle if you would rather drive it
+by hand, and the **Pace** slider changes the rate mid-sentence.
 
-**Reset** in the HQ footer removes everything the demo created and leaves the rest of
-the cluster untouched.
-
-### Cluster prerequisite: topic mapping rules
-
-The Kafka Wire Protocol gateway cannot address a stream as `/path/to/stream:topic`
-directly — every topic needs a mapping rule. Without one, produces fail with
-`UNKNOWN_TOPIC_OR_PARTITION` and the gateway simply does not advertise the topic.
-
-A rule maps a topic *name* to exactly one stream, so HQ and the edge cannot both use the
-same names against different streams via a global rule. Instead each side authenticates
-as its own cluster user and gets a **user rule**. That is what makes the two sites
-genuinely separate: HQ writes to `hq_stream`, the edge reads `edge_stream`, and stream
-replication is what carries data between them.
-
-Add to `kafka-cluster.conf` in the cluster filesystem at
-`/opt/kafka-wire-protocol/default-cluster/conf/`, alongside any rules already present:
-
-```
-kafka.cluster.topic-mappings.user-rules.<hq-user>   = ["satellite_*:/apps/satellite/hq_stream"]
-kafka.cluster.topic-mappings.user-rules.<edge-user> = ["satellite_*:/apps/satellite/edge/edge_stream"]
-```
-
-Then restart the Data Access Gateway. Point each side at its user in `.env`:
-
-```bash
-DF_USER=mapr              # HQ
-EDGE_DF_USER=satedge      # edge
-EDGE_DF_PASSWORD=...
-```
-
-The edge user needs to read the edge stream and mint its own S3 credentials. The demo's
-streams are created with public produce/consume/topic permissions, so no extra stream
-ACL is required.
-
-See [Mapping Topics to Streams](https://docs.ezmeral.hpe.com/datafabric-customer-managed/72/MapR_Streams/kafka-wlps-topic-map-rules.html).
+**Reset edge** / **Reset HQ** remove everything that site owns and leave the rest of the
+cluster untouched.
 
 ### Pointing at a vision model
 
-Use **Vision model** in the footer; any OpenAI-compatible endpoint works, and the dialog
-has a **Test** button that tells you whether the endpoint and model actually respond.
-Narration is optional — the pipeline runs without it.
+Use **Model** in the footer; any OpenAI-compatible endpoint works, and the dialog has a
+**Test** button that says whether the endpoint and model actually respond. Narration is
+optional — the pipeline runs without it.
 
 ### Splitting HQ and edge across two clusters
 
-Any `DF_*` setting can be prefixed with `HQ_` or `EDGE_` to override one side:
+Point each site at its own cluster — a hostname where CLDB and the apiserver are
+reachable:
 
 ```bash
-DF_HOST=df01.example.com        # HQ
-EDGE_DF_HOST=df02.example.com   # edge, on its own cluster
+HQ_HOST=df01.example.com
+EDGE_HOST=df02.example.com
 ```
 
-With both sides on one cluster the two-site separation is simulated; with two clusters
-and a trust relationship it is real.
+Because neither side ever touches the other's stream, nothing about the design changes —
+the replication pair simply spans two clusters instead of living on one. That needs a
+trust relationship between them.
 
 ## Configuration
 
-Everything is set in `.env` — see [.env.example](.env.example) for the full list. The
-ones worth knowing:
+See [.env.example](.env.example) for the full list. The ones worth knowing:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DF_HOST` | — | Cluster hostname |
-| `DF_USER` / `DF_PASSWORD` | `mapr` | Cluster credentials |
+| `HQ_HOST` / `EDGE_HOST` | — | Each site's cluster; may be the same host |
+| `HQ_USER` / `HQ_PASSWORD` | `mapr` | HQ credentials |
+| `EDGE_USER` / `EDGE_PASSWORD` | `mapr` | Edge credentials |
+| `PORT` | `8080` | Port the interface is served on |
 | `FEED_INTERVAL` | `12` | Seconds between feed injections |
 | `FEED_BATCH` | `2` | Assets published per interval |
 | `COLUMN_LIMIT` | `8` | Tiles kept per stage column |
 
 `FEED_INTERVAL` and `FEED_BATCH` set the pace. The defaults are slow enough to narrate
-over; raise them for an unattended screen.
-
-## A note on transport security
-
-The Kafka Wire Protocol gateway accepts `SASL_PLAINTEXT` on a default install, which
-sends the cluster password in clear over the network. That is the default here because
-it is what a stock cluster offers, and it is fine on a lab network. Once the gateway is
-configured for TLS, set `DF_KAFKA_SECURITY_PROTOCOL=SASL_SSL` and `DF_VERIFY_TLS=true`.
+over; raise them for an unattended screen. Volume, stream and bucket names are
+overridable too, in case the defaults collide on a shared cluster.
 
 ## Built with
 
-Python 3.12 and [NiceGUI](https://nicegui.io) for both interfaces, `confluent-kafka` for
-the replicated streams, `boto3` for object storage, PyIceberg for the catalogue, and the
-OpenAI client for the vision model.
+A FastAPI server on Python 3.12 with a React, Vite and Tailwind front end, talking over
+a WebSocket. `mapr-streams-python` for the replicated streams, `boto3` for object
+storage, PyIceberg for the catalogue, and the OpenAI client for the vision model. The
+image is built on `maprtech/pacc`.
 
 ## Status
 
-Working demo. Known limitations:
+Working demo, verified end to end against Data Fabric 8.1: ingest → store → catalogue →
+broadcast → replicate → request → deliver.
 
-- Requires a topic mapping rule on the cluster, as above
-- The HQ→edge asset copy is a server-side S3 copy rather than a volume mirror; mirroring
-  a bucket volume works but produces mirror volumes that cannot be removed over REST,
-  which would leave residue behind on every Reset
-- With one cluster the two-site split is simulated
+Known limitations:
+
+- The container is `linux/amd64` only, because the Data Fabric client is.
+- Building the image yourself needs credentials for HPE's package repository, or a
+  reachable mirror via the `MAPR_REPO` build argument. The `maprtech/pacc` base already
+  ships a working client, so most builds need neither.
+- One container configures one Data Fabric client, so a two-cluster split relies on the
+  trust relationship between them.
+- With one cluster the two-site split is real in every respect except geography.
 
 ## Contributing
 

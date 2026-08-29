@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pyarrow as pa
 
-import dfabric
 import settings
+from connections import CONNECTIONS
 
 logger = logging.getLogger(__name__)
 logging.getLogger("pyiceberg").setLevel(logging.WARNING)
@@ -62,7 +62,7 @@ def get_catalog(site):
         if cached is not None:
             return cached
 
-        profile = dfabric.for_side(site.side)
+        profile = CONNECTIONS.profile(site.side)
         credentials = profile.s3_credentials()
         if not credentials:
             logger.error("No S3 credentials; cannot open the Iceberg catalog")
@@ -72,6 +72,12 @@ def get_catalog(site):
             from pyiceberg.catalog.sql import SqlCatalog
 
             catalog = SqlCatalog(site.side.lower(), **{
+                # FsspecFileIO rather than the default PyArrowFileIO: pyarrow's S3
+                # client is the AWS C++ SDK, which sends aws-chunked bodies with
+                # trailing checksums that the Data Fabric gateway rejects with
+                # XAmzContentSHA256Mismatch on every upload. s3fs goes through
+                # botocore, which honours the checksum settings below.
+                "py-io-impl": "pyiceberg.io.fsspec.FsspecFileIO",
                 "uri": f"sqlite:///{CATALOG_DB}",
                 "warehouse": f"s3://{site.warehouse_bucket}",
                 "s3.endpoint": profile.s3_endpoint,

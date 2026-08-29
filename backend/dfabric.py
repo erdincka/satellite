@@ -1,16 +1,13 @@
 """
 Connection layer for an external HPE Ezmeral Data Fabric cluster.
 
-The demo used to run inside a single-node sandbox container and reach the cluster
-through the native client: `maprcli` for provisioning, `mapr-streams-python` against
-`/opt/mapr/lib`, and a POSIX `/mapr/<cluster>` FUSE mount for files.
-
-None of that is required. Every access path this app needs is available over the
-network, so the app can run on any machine against any reachable cluster:
+Provisioning and object access go over the network, so neither needs `maprcli` nor a
+POSIX `/mapr` FUSE mount. Streams use the native client, which does need the MapR
+client libraries — see streams.py for why the Kafka Wire Protocol is not usable here.
 
     provisioning / status   REST apiserver      https://<host>:8443/rest
-    streams                 Kafka Wire Protocol <host>:9092   (data-access-gateway)
     files + iceberg         S3 gateway          https://<host>:9000 (s3server)
+    streams                 native client       CLDB <host>:7222 (see streams.py)
 
 HQ and EDGE each own a Profile. Today both point at the same cluster; pointing EDGE
 at a second cluster with a trust relationship is a configuration change, not a
@@ -19,6 +16,7 @@ refactor.
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import threading
@@ -41,13 +39,27 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 S3_KEY_RENEW_MARGIN = 120  # seconds
 
 
-def _env(side: str, name: str, default: str) -> str:
-    """Read SIDE_NAME, falling back to NAME, then to the default.
+@functools.lru_cache(maxsize=32)
+def _resolve(host: str) -> str:
+    """Resolve a hostname once and remember it.
 
-    Lets one variable configure both sides (`DF_HOST=...`) while still allowing a
-    split deployment to override just one (`EDGE_DF_HOST=...`).
+    Not a micro-optimisation. In a container whose first nameserver is slow to answer,
+    every lookup costs seconds before the resolver falls through — measured at 3.07s
+    per call against a cluster that answers in 0.30s once connected. The apiserver
+    sends no keep-alive either, so without this every REST call re-resolves and the
+    interface feels broken. Falls back to the name if resolution fails, so a transient
+    DNS problem degrades rather than breaks.
     """
-    return os.environ.get(f"{side}_{name}") or os.environ.get(name) or default
+    import socket
+
+    try:
+        address = socket.gethostbyname(host)
+        if address != host:
+            logger.info("Resolved %s to %s (pinned for this process)", host, address)
+        return address
+    except Exception as error:
+        logger.warning("Could not resolve %s: %s", host, error)
+        return host
 
 
 @dataclass
@@ -57,13 +69,9 @@ class Profile:
     side: str  # "HQ" or "EDGE"
     host: str
     rest_port: int = 8443
-    kafka_port: int = 9092
     s3_port: int = 9000
     username: str = "mapr"
     password: str = "mapr"
-    # The Kafka gateway on 9092 accepts SASL_PLAINTEXT only on a default install;
-    # override when the gateway is configured for TLS.
-    kafka_security_protocol: str = "SASL_PLAINTEXT"
     verify_tls: bool = False
     s3_domain: str = "primary"
     s3_account: str = "default"
@@ -75,31 +83,20 @@ class Profile:
     _client: "httpx.Client | None" = field(default=None, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
-    @classmethod
-    def from_env(cls, side: str) -> "Profile":
-        return cls(
-            side=side,
-            host=_env(side, "DF_HOST", "df01.kayalab.uk"),
-            rest_port=int(_env(side, "DF_REST_PORT", "8443")),
-            kafka_port=int(_env(side, "DF_KAFKA_PORT", "9092")),
-            s3_port=int(_env(side, "DF_S3_PORT", "9000")),
-            username=_env(side, "DF_USER", "mapr"),
-            password=_env(side, "DF_PASSWORD", "mapr"),
-            kafka_security_protocol=_env(side, "DF_KAFKA_SECURITY_PROTOCOL", "SASL_PLAINTEXT"),
-            verify_tls=_env(side, "DF_VERIFY_TLS", "false").lower() in ("1", "true", "yes"),
-            s3_domain=_env(side, "DF_S3_DOMAIN", "primary"),
-            s3_account=_env(side, "DF_S3_ACCOUNT", "default"),
-        )
-
     # ------------------------------------------------------------------ endpoints
 
     @property
-    def rest_url(self) -> str:
-        return f"https://{self.host}:{self.rest_port}/rest"
+    def address(self) -> str:
+        """The cluster's IP, resolved once. Diagnostic only — see _resolve."""
+        return _resolve(self.host)
 
     @property
-    def kafka_bootstrap(self) -> str:
-        return f"{self.host}:{self.kafka_port}"
+    def rest_url(self) -> str:
+        # Deliberately the hostname, not the pinned address: the cluster's certificate
+        # is issued for the name, and pyiceberg's S3 layer validates it even when the
+        # rest of the app does not. The entrypoint pins the name in /etc/hosts instead,
+        # which makes resolution instant without breaking certificate matching.
+        return f"https://{self.host}:{self.rest_port}/rest"
 
     @property
     def s3_endpoint(self) -> str:
@@ -235,24 +232,15 @@ class Profile:
             ),
         )
 
-    # ------------------------------------------------------------ streams (Kafka)
-
-    def kafka_config(self, overrides: dict | None = None) -> dict:
-        config = {
-            "bootstrap.servers": self.kafka_bootstrap,
-            "security.protocol": self.kafka_security_protocol,
-            "sasl.mechanism": "PLAIN",
-            "sasl.username": self.username,
-            "sasl.password": self.password,
-        }
-        if self.kafka_security_protocol.endswith("SSL"):
-            config["enable.ssl.certificate.verification"] = str(self.verify_tls).lower()
-        config.update(overrides or {})
-        return config
+    # ------------------------------------------------------------------ streams
+    #
+    # Streams use the native client, which authenticates with a MapR ticket rather
+    # than credentials passed per connection, so there is nothing to configure here.
+    # Reachability is checked over REST instead.
 
     # ------------------------------------------------------------------- health
 
-    def check(self) -> dict[str, tuple[bool, str]]:
+    def check(self, stream: str | None = None) -> dict[str, tuple[bool, str]]:
         """Probe each subsystem so setup problems are diagnosable at a glance.
 
         Returns {subsystem: (ok, detail)} — the UI renders this directly instead of
@@ -282,22 +270,21 @@ class Profile:
             except Exception as error:
                 results["s3"] = (False, f"{type(error).__name__}: {error}")
 
-        try:
-            from confluent_kafka.admin import AdminClient
+        import streams
+        ok, detail = streams.native_client()
+        results["client"] = (ok, detail)
 
-            AdminClient(self.kafka_config()).list_topics(timeout=10)
-            results["streams"] = (True, f"{self.kafka_bootstrap} ({self.kafka_security_protocol})")
-        except Exception as error:
-            results["streams"] = (False, f"{type(error).__name__}: {error}")
+        if stream:
+            info = self.rest("stream/info", {"path": stream}, timeout=10)
+            reason = self.failed(info)
+            if reason:
+                results["streams"] = (False, reason)
+            else:
+                topics = (info.get("data") or [{}])[0].get("numtopics", "?")
+                results["streams"] = (True, f"{stream} ({topics} topics)")
 
         return results
 
 
-# One profile per side. Both default to the same cluster; set EDGE_DF_HOST to split
-# the demo across a second cluster.
-HQ = Profile.from_env("HQ")
-EDGE = Profile.from_env("EDGE")
-
-
-def for_side(side: str) -> Profile:
-    return HQ if side.upper() == "HQ" else EDGE
+# Profile instances are created and owned by connections.py, because the two sites are
+# runtime-configurable connections rather than fixed environment settings.

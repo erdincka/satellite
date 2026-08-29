@@ -81,9 +81,9 @@ def _stream(profile: Profile, path: str) -> Step:
 def _topic(profile: Profile, stream: str, topic: str) -> Step:
     """Create a topic explicitly.
 
-    The native client creates topics on first produce, but the Kafka Wire Protocol
-    gateway does not — producing to a missing topic fails with UNKNOWN_TOPIC_OR_PART.
-    Creating them up front makes the demo work under either client.
+    The native client will create a topic on first produce, but creating them up front
+    means the replica is set up already carrying them, and it makes the demo's objects
+    inspectable on the cluster before any data flows.
     """
     response = profile.rest("stream/topic/create",
                             {"path": stream, "topic": topic}, method="POST")
@@ -140,7 +140,7 @@ def _replication(profile: Profile, source: str, replica: str,
     return Step("Stream replication", True, f"{source} ⇄ {replica}")
 
 
-def _stage_images() -> Step:
+def stage_images() -> Step:
     """Unpack the bundled imagery to local disk.
 
     The images are the demo's stand-in for a live feed. They stay local and are
@@ -211,7 +211,7 @@ def configure(profile: Profile, site: Site, peer: Site | None = None,
                     profile, site.stream, peer.stream,
                     None if same_cluster else (peer_profile.cluster_name if peer_profile else None)),
             ]
-        steps.append(_stage_images)
+        steps.append(stage_images)
 
     for make_step in steps:
         try:

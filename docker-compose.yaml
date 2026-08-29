@@ -1,0 +1,34 @@
+# One service, two Data Fabric site connections.
+#
+# Set HQ_HOST / EDGE_HOST and credentials in .env, or leave them blank and connect from
+# the interface. Both sites may point at the same cluster.
+
+services:
+  satellite:
+    build:
+      context: .
+      args:
+        # HPE's public package repository needs credentials. Point these at a mirror you
+        # can reach if you build the image yourself, and match your cluster's version —
+        # a client older than the cluster cannot authenticate to it.
+        MAPR_REPO: ${MAPR_REPO:-https://package.ezmeral.hpe.com/releases/v8.1.0/redhat}
+        MAPR_MEP_REPO: ${MAPR_MEP_REPO:-https://package.ezmeral.hpe.com/releases/MEP/MEP-10.1.0/redhat}
+    image: erdincka/satellite:2
+    container_name: satellite
+    restart: unless-stopped
+    platform: linux/amd64   # the Data Fabric client is x86-only
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      # Cluster connections entered in the interface survive a restart.
+      - satellite-state:/app/state
+    # A container's default resolver can be slow to answer, and every cluster call pays
+    # for it. Uncomment and point at a resolver that answers promptly if status feels
+    # sluggish. The app also pins each cluster's address after the first lookup.
+    # dns:
+    #   - 1.1.1.1
+
+volumes:
+  satellite-state:

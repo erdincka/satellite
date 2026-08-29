@@ -7,35 +7,13 @@ import json
 import logging
 from pathlib import Path
 
-from nicegui import ui
-
 import aiclient
-import dfabric
+from connections import CONNECTIONS
 import objectstore
 import settings
 import sites
 
 logger = logging.getLogger(__name__)
-
-
-class LogElementHandler(logging.Handler):
-    """Emit log records into a ui.log element."""
-
-    def __init__(self, element: ui.log, level: int = logging.INFO) -> None:
-        self.element = element
-        super().__init__(level)
-        self.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-7s %(message)s", "%H:%M:%S"))
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            self.element.push(self.format(record))
-        except Exception:
-            # The element is gone (tab closed) — dropping the line is the right move.
-            pass
-
-
-def gracefully_fail(exception: Exception) -> None:
-    logger.exception("Unhandled error: %s", exception)
 
 
 # ---------------------------------------------------------------------- the feed
@@ -82,7 +60,7 @@ def feed_items() -> list[dict]:
 
 def describe_image(site, key: str, context: str = "") -> str:
     """One-sentence intelligence-officer style narration for an asset."""
-    image = objectstore.get_bytes(dfabric.for_side(site.side), site.assets_bucket, key)
+    image = objectstore.get_bytes(CONNECTIONS.profile(site.side), site.assets_bucket, key)
     ok, text = aiclient.image_query(
         image,
         "Analyse the scene in this image as an intelligence officer and describe the "
@@ -97,7 +75,7 @@ def describe_image(site, key: str, context: str = "") -> str:
 def ask_about_asset(side: str, key: str, question: str) -> tuple[bool, str]:
     """Answer a question about an asset the given site holds."""
     site = sites.for_side(side)
-    image = objectstore.get_bytes(dfabric.for_side(side), site.assets_bucket, key)
+    image = objectstore.get_bytes(CONNECTIONS.profile(side), site.assets_bucket, key)
     if image is None:
         return False, f"{key} is not in {site.assets_bucket} yet"
     return aiclient.image_query(image, question)
