@@ -1,194 +1,103 @@
-import json
-import os
-import shutil
-import textwrap
-import httpx
-import pandas as pd
-import logging
-import settings
-import streams
-import aiclient
-import base64
-from nicegui import ui
-import asyncio
-from typing import Callable
+"""Feed loading, AI helpers and the log handler that feeds the in-app console."""
 
+from __future__ import annotations
+
+import functools
+import json
+import logging
+from pathlib import Path
+
+from nicegui import ui
+
+import aiclient
+import dfabric
+import objectstore
+import settings
 
 logger = logging.getLogger(__name__)
 
-# class AssetItem:
-#     def __init__(self, title, description, keywords, preview, href:str="", status:str="", analysis:str="", object:str=""):
-#         self.title = title
-#         self.description = description
-#         self.keywords = keywords
-#         self.preview = preview
-#         self.href = href
-#         self.status = status
-#         self.analysis = analysis
-#         self.object = object
 
 class LogElementHandler(logging.Handler):
-    """A logging handler that emits messages to a log element."""
+    """Emit log records into a ui.log element."""
 
-    def __init__(self, element: ui.log, level: int = logging.DEBUG) -> None:
+    def __init__(self, element: ui.log, level: int = logging.INFO) -> None:
         self.element = element
         super().__init__(level)
+        self.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-7s %(message)s", "%H:%M:%S"))
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            msg = self.format(record)
-            self.element.push(msg)
+            self.element.push(self.format(record))
         except Exception:
-            self.handleError(record)
+            # The element is gone (tab closed) — dropping the line is the right move.
+            pass
 
 
-# Handle exceptions without UI failure
-def gracefully_fail(exc: Exception):
-    print("gracefully failing...")
-    logger.exception(exc)
+def gracefully_fail(exception: Exception) -> None:
+    logger.exception("Unhandled error: %s", exception)
 
 
-async def run_command_with_dialog(command: str, callback: Callable = lambda: None) -> None:
+# ---------------------------------------------------------------------- the feed
+
+
+@functools.cache
+def feed_items() -> list[dict]:
+    """Load the bundled NASA imagery catalogue.
+
+    Pre-recorded rather than live so the demo works without internet and shows the same
+    assets every time — useful when the same walkthrough is given repeatedly.
     """
-    Run a command in the background and display the output in the pre-created dialog.
-    """
+    path = Path(settings.FEED_FILE)
+    if not path.exists():
+        logger.error("Feed file %s not found", path)
+        return []
 
-    with ui.dialog().props("full-width") as dialog, ui.card().classes("grow relative"):
-        ui.button(icon="close", on_click=dialog.close).props("flat round dense").classes("absolute right-2 top-2")
-        ui.label(f"Running: {textwrap.shorten(command, width=80)}").classes("text-bold")
-        result = ui.log().classes("w-full mt-2").style("white-space: pre-wrap")
-
-    dialog.on("close", lambda d=dialog: d.delete()) # pyright: ignore
-    dialog.open()
-
-    result.content = '' # pyright: ignore
-    async for out in run_command(command): result.push(out)
-    if callback:
-        callback()
-
-
-async def run_command(command: str):
-    """
-    Run a command in the background and return the output.
-    """
-
-    process = await asyncio.create_subprocess_shell(
-        command,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-        cwd=os.path.dirname(os.path.abspath(__file__))
-    )
-
-    # NOTE we need to read the output in chunks, otherwise the process will block
-    while True:
-        new = await process.stdout.read(4096) # pyright: ignore
-        if not new:
-            break
-        yield new.decode()
-
-    yield f"Finished cmd: {command}"
-    logger.debug(f"Finished cmd: {command}")
-
-
-def nasa_feed():
-    logger.debug("Loading data")
-    data = None
-    with open("images.json", "r") as f:
-        data = json.loads(f.read())
-
-    logger.info("Feed assets: %s", len(data['collection']['items']) if data else 0)
-
-    if data:
-        df = parse_data(data)
-        return df
-    else:
-        logger.error("Failed to feed data.")
-        return pd.DataFrame()
-
-
-def parse_data(data):
-    """Parse the NASA API response data into a DataFrame."""
-    logger.debug(f"Parsing NASA API response with {len(data['collection']['items'])} items.")
     try:
-        # logger.debug(data)
-        df = pd.DataFrame(data["collection"]["items"])
-        # df.set_index("href", inplace=True)
-        df["title"] = df["data"].apply(lambda x: x[0]["title"])
-        df["description"] = df["data"].apply(lambda x: x[0]["description"])
-        df["keywords"] = df["data"].apply(lambda x: ', '.join((x[0]["keywords"] if "keywords" in x[0] else [])))
-        df["preview"] = df["links"].apply(lambda x: [link["href"] for link in x if link["rel"] == "preview"][0])
-        df.drop("data", axis=1, inplace=True)
-        df.drop("links", axis=1, inplace=True)
-        return df
+        raw = json.loads(path.read_text())
+        items = []
+        for item in raw["collection"]["items"]:
+            data = item["data"][0]
+            previews = [link["href"] for link in item.get("links", []) if link.get("rel") == "preview"]
+            if not previews:
+                continue
+            items.append({
+                "key": objectstore.object_name(previews[0]),
+                "title": data.get("title", "(untitled)"),
+                "description": data.get("description", ""),
+                "keywords": ", ".join(data.get("keywords", [])),
+                "preview": previews[0],
+            })
+        logger.info("Loaded %d feed items", len(items))
+        return items
     except Exception as error:
-        logger.error(error)
-        return pd.DataFrame()
+        logger.error("Could not parse %s: %s", path, error)
+        return []
 
 
-def image_to_base64(image_path: str):
-    try:
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode("utf-8")
-    except FileNotFoundError:
-        print(f"File not found: {image_path}")
-        return
+# ------------------------------------------------------------------ AI helpers
+#
+# All of these block on the model. Call them from a worker thread.
 
 
-def ai_describe_image(filename: str, context: str = ""):
-    image_b64 = image_to_base64(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}")
-    ai_response = aiclient.image_query(image_b64=image_b64,
-        prompt=f"Analyze the scene in this image as an intelligence officer and describe the situation in 1 sentence, use this description about the image: '{context}'")
-    logger.info("AI analysis for %s: %s", filename, ai_response)
-    return ai_response if ai_response else f'Failed to get a response for {filename}'
+def describe_image(key: str, context: str = "") -> str:
+    """One-sentence intelligence-officer style narration for an HQ asset."""
+    image = objectstore.get_bytes(dfabric.HQ, settings.HQ_BUCKET, key)
+    ok, text = aiclient.image_query(
+        image,
+        "Analyse the scene in this image as an intelligence officer and describe the "
+        f"situation in one sentence. Context: '{context}'",
+    )
+    if not ok:
+        logger.warning("No narration for %s: %s", key, text)
+        return ""
+    return text
 
 
-def ai_detect_objects(filename: str):
-    image_b64 = image_to_base64(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}")
-    ai_response = aiclient.image_query(image_b64=image_b64, prompt="list the objects in the image")
-    logger.info("AI identification for %s: %s", filename, ai_response)
-    return ai_response if ai_response else f'failed to get object detection for {filename}'
-
-
-def ai_ask_question(filename: str, question: str):
-    # TODO: questions should be checked for malicious content
-    image_b64 = image_to_base64(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{filename}")
-    ai_response = aiclient.image_query(image_b64=image_b64, prompt=question)
-    logger.info("AI response for q: %s on image %s: %s", question, filename, ai_response)
-    return ai_response if ai_response else "Your question remained unanswered!!!"
-
-
-def process_request(request: dict, isLive: bool = False) -> bool:
-    if isLive:
-        logger.info("Capturing asset metadata: for %s", request['title'])
-        # extract full filename from metadata
-        baseUrl = "/".join(request["href"].split("/")[:-1])
-        metaUrl = baseUrl + "/metadata.json"
-        logger.debug("Base URL: %s \nMeta URL: %s", baseUrl, metaUrl)
-        r = httpx.get(metaUrl, timeout=10)
-        if r.status_code != 200:
-            logger.error("Failed to get metadata: %s", request["href"])
-            return False
-        metadata = r.json()
-        logger.debug("Metadata: %s", metadata)
-        filename = metadata['File:FileName']
-        r = httpx.get(baseUrl + f"/{filename}", timeout=10)
-        if r.status_code != 200:
-            logger.error("Failed to get image: %s", request["href"])
-            return False
-        with open(f"{settings.MAPR_MOUNT}{settings.EDGE_REPLICATED_VOLUME}/{filename}", "wb") as f:
-            s = f.write(r.content)
-            logger.debug("Saved %s: %d bytes", filename, s)
-        logger.info("Image saved for deployed unit: : %s", filename)
-    else:
-        filename = request['preview'].split("/")[-1]
-        logger.info("Copying asset %s to %s", filename, settings.EDGE_REPLICATED_VOLUME)
-        shutil.copy(f"{settings.MAPR_MOUNT}{settings.HQ_ASSETS}/{filename}", f"{settings.MAPR_MOUNT}{settings.EDGE_REPLICATED_VOLUME}/{filename}")
-
-    # Send message for copied asset
-    i = request.copy()
-    i["status"] = "responded"
-    if streams.produce(settings.EDGE_STREAM, settings.RESPONSE_TOPIC, [i]):
-        logger.info("Response is sent for: %s", i['title'])
-        return True
-    else:
-        logger.error("Failed to send response for: %s", i['title'])
-        return False
+def ask_about_asset(side: str, key: str, question: str) -> tuple[bool, str]:
+    """Answer a question about an asset the edge has collected."""
+    profile = dfabric.for_side(side)
+    bucket = settings.EDGE_BUCKET if side.upper() == "EDGE" else settings.HQ_BUCKET
+    image = objectstore.get_bytes(profile, bucket, key)
+    if image is None:
+        return False, f"{key} is not in {bucket} yet"
+    return aiclient.image_query(image, question)

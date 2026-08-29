@@ -1,155 +1,171 @@
+"""
+The demo's services.
+
+HQ: feed → pipeline → download → catalogue → broadcast, plus a listener that answers
+edge requests. Edge: receive descriptions, request an asset, collect it when it lands.
+
+Each service is synchronous and short-lived by design — it drains whatever is waiting
+and returns — so it can be run on a timer in a worker thread without holding one open.
+Every outcome, including failure, is recorded on the board so it is visible on screen
+instead of only in a log.
+"""
+
+from __future__ import annotations
+
 import logging
 import random
-import json
 
-from nicegui import app
-
+import assets
+import dfabric
 import iceberger
-import streams, settings
-import mapr
+import objectstore
+import settings
+import streams
 import utils
+from assets import Asset
 
 logger = logging.getLogger(__name__)
 
-# HQ Services
-def publish_to_pipeline(assets: list[dict], count: int = 5):
-    logger.debug("Picking random %d assets out of %d samples", count, len(assets))
-    messages = random.sample(assets, min(len(assets), count))
-    if streams.produce(stream=settings.HQ_STREAM, topic=settings.PIPELINE, messages=messages):
-        # Tag asset with the service name
-        for message in messages:
-            message["service"] = "pipeline"
-            settings.PROCESSED_ASSETS['HQ'].append(message)
-        logger.info("Event notifications sent for %d assets", len(messages))
-    else:
-        for message in messages:
-            message["service"] = "failed"
-            settings.PROCESSED_ASSETS['HQ'].append(message)
-        logger.error("Failed to put into pipeline: %s", messages)
+# Distinct groups so HQ and edge consumers track their own offsets independently.
+GROUP_PIPELINE = "hq-pipeline"
+GROUP_REQUESTS = "hq-requests"
+GROUP_ASSETS = "edge-assets"
+GROUP_RESPONSES = "edge-responses"
 
 
-def pipeline_to_broadcast():
-    logger.debug("Starting pipeline to broadcast...")
-    for msg in streams.consume(stream=settings.HQ_STREAM, topic=settings.PIPELINE):
-        item = json.loads(msg)
-        logger.info("Asset notification: %s", item["title"])
-        logger.debug("Downloading from: %s", item["preview"])
-        filename = mapr.save_from_url(item["preview"])
-        if filename:
-            i = item.copy()
-            i["service"] = "download"
-            settings.PROCESSED_ASSETS['HQ'].append(i)
-            i = item.copy()
-            # Run AI narration on the image
-            i["analysis"] = utils.ai_describe_image(filename, i['description'])
-            # Update the table with the analysis
-            logger.debug("Updating table with analysis: %s", i['analysis'])
-            if iceberger.write(warehouse_path=f"{settings.MAPR_MOUNT}{settings.HQ_VOLUME}", namespace="HQ", tablename="asset_table", records=[i]):
-                logger.debug("Updated table with analysis: %s", i['analysis'])
-                i = i.copy()
-                i["service"] = "record"
-                settings.PROCESSED_ASSETS['HQ'].append(i)
-                logger.debug("Notifying broadcast: %s", i['title'])
-                if streams.produce(stream=settings.HQ_STREAM, topic=settings.ASSET_TOPIC, messages=[i]):
-                    i = i.copy()
-                    i["service"] = "broadcast"
-                    settings.PROCESSED_ASSETS['HQ'].append(i)
-                    logger.debug("Broadcasted: %s", i['title'])
-                else:
-                    i = i.copy()
-                    i["service"] = "failed"
-                    settings.PROCESSED_ASSETS['HQ'].append(i)
-                    logger.error("Failed to broadcast: %s", i['title'])
-            else:
-                i = i.copy()
-                i["service"] = "failed"
-                settings.PROCESSED_ASSETS['HQ'].append(i)
-                logger.error("Failed to record: %s",i['title'])
+# ------------------------------------------------------------------ HQ services
+
+
+def publish_to_pipeline(count: int = settings.FEED_BATCH) -> None:
+    """Take items from the feed and announce them on the pipeline stream."""
+    feed = utils.feed_items()
+    if not feed:
+        logger.warning("Feed is empty; nothing to publish")
+        return
+
+    for record in random.sample(feed, min(len(feed), count)):
+        asset = Asset.from_record(record)
+        if streams.produce(dfabric.HQ, settings.HQ_STREAM, settings.PIPELINE, [asset.to_record()]):
+            assets.HQ_BOARD.place(asset, "pipeline")
         else:
-            i = item.copy()
-            i["service"] = "failed"
-            settings.PROCESSED_ASSETS['HQ'].append(i)
-            logger.error("Failed to save file: %s", i['title'])
+            assets.HQ_BOARD.fail(asset, "Could not publish to the pipeline stream")
 
 
-def request_listener():
-    for msg in streams.consume(settings.HQ_STREAM, settings.REQUEST_TOPIC):
-        request = json.loads(msg)
-        # process only pending requests
-        if "status" in request and request["status"] == "requested":
-            settings.PROCESSED_ASSETS['HQ'].append(request)
-            logger.info("Received request: %s", request["title"])
-            if utils.process_request(request, isLive=False):
-                i = request.copy()
-                i["service"] = "response"
-                settings.PROCESSED_ASSETS['HQ'].append(i)
-            else:
-                logger.error("Failed to process request for %s", request['title'])
-                request['service'] = 'failed'
-                settings.PROCESSED_ASSETS['HQ'].append(request)
+def pipeline_to_broadcast() -> None:
+    """Download, catalogue and broadcast everything waiting on the pipeline."""
+    for record in streams.drain(dfabric.HQ, settings.HQ_STREAM, settings.PIPELINE, GROUP_PIPELINE):
+        asset = assets.HQ_BOARD.get(record.get("key", "")) or Asset.from_record(record)
+
+        if not objectstore.stage_for_download(dfabric.HQ, asset.key):
+            assets.HQ_BOARD.fail(asset, f"{asset.key} is not in {settings.HQ_BUCKET}")
+            continue
+        assets.HQ_BOARD.place(asset, "download")
+
+        # Narration is best-effort: a missing or slow VLM must not stop the pipeline,
+        # because the demo still tells its story without it.
+        asset.analysis = utils.describe_image(asset.key, asset.description)
+
+        if not iceberger.write_asset(asset):
+            assets.HQ_BOARD.fail(asset, "Could not write to the Iceberg table")
+            continue
+        assets.HQ_BOARD.place(asset, "record")
+
+        if streams.produce(dfabric.HQ, settings.HQ_STREAM, settings.ASSET_TOPIC,
+                           [asset.to_record()]):
+            assets.HQ_BOARD.place(asset, "broadcast")
         else:
-            logger.info("Ignoring request: %s with status: %s", request["title"], request["status"])
+            assets.HQ_BOARD.fail(asset, "Could not broadcast to edge sites")
 
 
-# EDGE SERVICES
-def asset_listener():
-    for msg in streams.consume(settings.EDGE_STREAM, settings.ASSET_TOPIC):
-        asset = json.loads(msg)
-        logger.info("Received: %s", asset["title"])
-        logger.debug(asset)
-        del asset['service'] # drop column for iceberg table
-        if iceberger.write(f"{settings.MAPR_MOUNT}{settings.EDGE_VOLUME}", "EDGE", "asset_table", [asset]): # type: ignore
-            logger.debug(f"Asset notification saved: %s", asset['title'])
-            i = asset.copy()
-            i["service"] = "receive"
-            settings.PROCESSED_ASSETS['EDGE'].append(i)
+def request_listener() -> None:
+    """Answer edge requests by copying the asset across and confirming on the stream."""
+    for record in streams.drain(dfabric.HQ, settings.HQ_STREAM, settings.REQUEST_TOPIC,
+                                GROUP_REQUESTS):
+        if record.get("status") != "requested":
+            continue
+
+        asset = assets.HQ_BOARD.get(record.get("key", "")) or Asset.from_record(record)
+        asset.status = "requested"
+        assets.HQ_BOARD.place(asset, "request")
+
+        if not objectstore.transfer_to_edge(dfabric.HQ, asset.key):
+            assets.HQ_BOARD.fail(asset, "Could not copy the asset to the edge bucket")
+            continue
+
+        asset.status = "responded"
+        if streams.produce(dfabric.HQ, settings.HQ_STREAM, settings.RESPONSE_TOPIC,
+                           [asset.to_record()]):
+            assets.HQ_BOARD.place(asset, "response")
         else:
-            i = asset.copy()
-            i["service"] = "failed"
-            settings.PROCESSED_ASSETS['EDGE'].append(i)
-            logger.error("Failed to save asset notification: %s", asset['title'])
+            assets.HQ_BOARD.fail(asset, "Copied the asset but could not confirm to the edge")
 
 
-def asset_request(asset: dict):
-    logger.debug("Sending request for: %s", asset["title"])
-    # Mark asset for response
-    asset["service"] = "request"
-    asset["status"] = "requested"
-    if streams.produce(settings.EDGE_STREAM, settings.REQUEST_TOPIC, [asset]):
-        logger.debug("Requested: %s", asset)
-        settings.PROCESSED_ASSETS['EDGE'].append(asset)
-    else:
-        asset['service'] = 'failed'
-        settings.PROCESSED_ASSETS['EDGE'].append(asset)
-        logger.error("Failed to request asset: %s", asset['title'])
+def hq_cycle() -> None:
+    """One full turn of the HQ pipeline, safe to call on a timer."""
+    publish_to_pipeline()
+    pipeline_to_broadcast()
+    request_listener()
 
 
-def response_listener():
-    for message in streams.consume(settings.EDGE_STREAM, settings.RESPONSE_TOPIC):
-        asset = json.loads(message)
-        if asset["status"] == "responded":
-            logger.debug("Got response: %s", asset)
-            # Mark complete
-            asset['service'] = 'response'
-            asset['status'] = 'completed'
-            asset['object'] = "" # FIX: image not available yet, wait for volume replication --- #utils.ai_describe_image(f"{settings.MAPR_MOUNT}{settings.EDGE_ASSETS}/{asset['preview'].split('/')[-1]}", asset['description'])
-            settings.PROCESSED_ASSETS['EDGE'].append(asset)
+# ---------------------------------------------------------------- EDGE services
+
+
+def asset_listener() -> None:
+    """Receive broadcast descriptions and record them in the edge catalogue."""
+    for record in streams.drain(dfabric.EDGE, settings.EDGE_STREAM, settings.ASSET_TOPIC,
+                                GROUP_ASSETS):
+        asset = Asset.from_record(record, stage="receive")
+        if assets.EDGE_BOARD.get(asset.key):
+            continue  # already known; a redelivery, not news
+
+        if iceberger.write_asset(asset, namespace="EDGE"):
+            assets.EDGE_BOARD.place(asset, "receive")
         else:
-            logger.info("ignoring %s with status: %s", asset["title"], asset["status"])
+            assets.EDGE_BOARD.fail(asset, "Could not write to the edge catalogue")
 
 
+def request_asset(asset: Asset) -> bool:
+    """Ask HQ for the full image. Called when a presenter clicks an available asset."""
+    asset.status = "requested"
+    if streams.produce(dfabric.EDGE, settings.EDGE_STREAM, settings.REQUEST_TOPIC,
+                       [asset.to_record()]):
+        assets.EDGE_BOARD.place(asset, "request")
+        return True
+    assets.EDGE_BOARD.fail(asset, "Could not send the request upstream")
+    return False
+
+
+def response_listener() -> None:
+    """Notice HQ's confirmations. The image is collected separately, on demand."""
+    for record in streams.drain(dfabric.EDGE, settings.EDGE_STREAM, settings.RESPONSE_TOPIC,
+                                GROUP_RESPONSES):
+        if record.get("status") != "responded":
+            continue
+        asset = assets.EDGE_BOARD.get(record.get("key", "")) or Asset.from_record(record)
+        asset.status = "available"
+        assets.EDGE_BOARD.place(asset, "response")
+
+
+def edge_cycle() -> None:
+    """One full turn of the edge services, safe to call on a timer."""
+    asset_listener()
+    response_listener()
+
+
+# Source shown in the UI when a stage header is clicked, so the audience can see the
+# code behind the step being narrated.
 CODE = {
     "HQ": {
         "pipeline": [publish_to_pipeline, streams.produce],
-        "download": [mapr.save_from_url],
-        "record": [pipeline_to_broadcast, iceberger.write],
+        "download": [objectstore.stage_for_download],
+        "record": [iceberger.write_asset],
         "broadcast": [pipeline_to_broadcast],
-        "request": [request_listener, streams.consume],
-        "response": [utils.process_request]
+        "request": [request_listener],
+        "response": [objectstore.transfer_to_edge],
     },
     "EDGE": {
-        "receive": [asset_listener, streams.consume],
-        "request": [asset_request, streams.produce],
+        "receive": [asset_listener, streams.drain],
+        "request": [request_asset],
         "response": [response_listener],
-    }
+    },
 }

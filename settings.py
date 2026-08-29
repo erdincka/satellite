@@ -1,86 +1,126 @@
+"""
+Names, layout and presentation constants for the demo.
+
+Connection details live in dfabric.py. Nothing here touches the local filesystem: the
+cluster name is resolved from the cluster itself, not read from a mapr-clusters.conf
+that only exists on a node with the native client installed.
+"""
+
 import logging
-import socket
+import os
 
-def get_cluster_name():
-    with open("/opt/mapr/conf/mapr-clusters.conf", "r") as f:
-        line = f.readline().strip('\n')
-        cluster_name = line.split(" ")[0]
-        return cluster_name
+TITLE = "Satellite"
+HQ_TITLE = "HQ — Command & Control"
+EDGE_TITLE = "Edge — Mission Control"
 
-TITLE = "Data Fabric Core to Edge Demo"
-STORAGE_SECRET = "ezmer@1r0cks"
+# NiceGUI signs its browser storage cookie with this. Override in any deployment that
+# is reachable by someone you would not hand a shell to.
+STORAGE_SECRET = os.environ.get("STORAGE_SECRET", "ezmer@1r0cks")
 
-# MY_IP = whatismyip()
-MY_HOSTNAME = socket.gethostname()
-REST_URL = f"https://{MY_HOSTNAME}:8443/rest"
-MAPR_USER = "mapr"
-MAPR_PASSWORD = "mapr"
-MAPR_CLUSTER = get_cluster_name()
+HQ_PORT = int(os.environ.get("HQ_PORT", "3000"))
+EDGE_PORT = int(os.environ.get("EDGE_PORT", "3001"))
+# Shown on each page so a presenter can jump to the other site.
+HQ_URL = os.environ.get("HQ_URL", f"http://localhost:{HQ_PORT}")
+EDGE_URL = os.environ.get("EDGE_URL", f"http://localhost:{EDGE_PORT}")
 
+# ------------------------------------------------------------------- cluster layout
+
+HQ_VOLUME_NAME = "satellite"
 HQ_VOLUME = "/apps/satellite"
-HQ_STREAM = f"{HQ_VOLUME}/hq_stream"
-HQ_ASSETS = f"{HQ_VOLUME}/assets"
+EDGE_VOLUME_NAME = "satellite_edge"
 EDGE_VOLUME = "/apps/satellite/edge"
+
+HQ_STREAM = f"{HQ_VOLUME}/hq_stream"
 EDGE_STREAM = f"{EDGE_VOLUME}/edge_stream"
-EDGE_ASSETS = f"{EDGE_VOLUME}/assets"
-EDGE_MIRROR_NAME = "edge_assets"
-EDGE_REPLICATED_VOLUME = f"{HQ_VOLUME}/edge_replicated"
 
-PIPELINE = "pipeline"
-ASSET_TOPIC = "assets"
-REQUEST_TOPIC = "requests"
-RESPONSE_TOPIC = "responses"
+# S3 bucket names must be DNS-compatible, so no underscores here.
+HQ_BUCKET = "satellite-hq-assets"
+EDGE_BUCKET = "satellite-edge-assets"
+WAREHOUSE_BUCKET = "satellite-warehouse"
 
-MAPR_MOUNT = f"/mapr/{MAPR_CLUSTER}"
+# Bundled sample imagery, uploaded to HQ_BUCKET during configure.
+IMAGE_ARCHIVE = "downloaded_images.tar"
+FEED_FILE = "images.json"
 
-# Application settings
-HQ_SERVICES = ["pipeline", "download", "record", "broadcast", "request", "response", "failed"]
-EDGE_SERVICES = ["receive", "request", "response", "failed"]
-APP_STATUS = {}
+# ------------------------------------------------------------------------- topics
 
-PROCESSED_ASSETS = {
-    "HQ":[],
-    "EDGE":[]
+#
+# Topic names carry a `satellite_` prefix so a single glob in the cluster's Kafka Wire
+# Protocol mapping rules covers all of them without disturbing other topics on the
+# cluster. Each side's user maps that glob to its own stream, which is what gives HQ and
+# the edge genuinely separate streams with replication carrying data between them.
+
+TOPIC_PREFIX = "satellite_"
+PIPELINE = f"{TOPIC_PREFIX}pipeline"
+ASSET_TOPIC = f"{TOPIC_PREFIX}assets"
+REQUEST_TOPIC = f"{TOPIC_PREFIX}requests"
+RESPONSE_TOPIC = f"{TOPIC_PREFIX}responses"
+
+# --------------------------------------------------------------------- the stages
+#
+# The demo's whole story is an asset moving left to right through these stages. The UI
+# renders one column per stage in this order, and an asset occupies exactly one of them
+# at a time, so the board shows a pipeline rather than a pile of duplicate cards.
+
+HQ_STAGES = ["pipeline", "download", "record", "broadcast", "request", "response"]
+EDGE_STAGES = ["receive", "request", "response"]
+
+STAGE_LABELS = {
+    "pipeline": "Ingested",
+    "download": "Stored",
+    "record": "Catalogued",
+    "broadcast": "Broadcast",
+    "request": "Requested",
+    "response": "Delivered",
+    "receive": "Available",
+    "failed": "Failed",
 }
 
-BGCOLORS = {
-    "pipeline": "bg-primary",
-    "download": "bg-secondary",
-    "record": "bg-accent",
-    "broadcast": "bg-positive",
-    "request": "bg-info",
-    "response": "bg-warning",
-    "receive": "bg-primary",
-    "failed": "bg-negative"
+STAGE_HELP = {
+    "pipeline": "Feed item picked up and published to the pipeline stream",
+    "download": "Image fetched and stored in the HQ bucket",
+    "record": "Metadata and AI narration written to the Iceberg table",
+    "broadcast": "Description published to every edge site",
+    "request": "An edge site asked for the full asset",
+    "response": "Asset copied across for the edge to collect",
+    "receive": "Description received — click to request the image",
+    "failed": "Something went wrong; open the tile for the reason",
+}
+
+STAGE_COLORS = {
+    "pipeline": "bg-indigo-6",
+    "download": "bg-cyan-7",
+    "record": "bg-teal-7",
+    "broadcast": "bg-green-7",
+    "request": "bg-amber-8",
+    "response": "bg-deep-orange-7",
+    "receive": "bg-indigo-6",
+    "failed": "bg-red-7",
 }
 
 ICONS = {
-    "pipeline": "podcasts",
-    "download": "download",
-    "record": "save",
-    "broadcast": "rss_feed",
-    "request": "hail",
-    "response": "chat",
-    "reply": "comment",
-    "receive": "podcasts",
-    "failed": "error",
+    "pipeline": "input",
+    "download": "cloud_download",
+    "record": "table_rows",
+    "broadcast": "podcasts",
+    "request": "front_hand",
+    "response": "inventory",
+    "receive": "inbox",
+    "failed": "error_outline",
 }
 
-# Configure logging
+# How many tiles a stage column keeps. Older ones retire so a demo can run for an hour
+# without the page growing without bound.
+COLUMN_LIMIT = int(os.environ.get("COLUMN_LIMIT", "8"))
+# Seconds between feed injections. Slow enough to narrate over.
+FEED_INTERVAL = float(os.environ.get("FEED_INTERVAL", "12"))
+# Assets injected per interval.
+FEED_BATCH = int(os.environ.get("FEED_BATCH", "2"))
 
-# INSECURE REQUESTS ARE OK in Lab
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+APP_STATUS: dict = {}
 
-# reduce logs from these
-# logging.getLogger("streams_handle_rd_kafka_assign").setLevel(logging.FATAL)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("requests").setLevel(logging.WARNING)
-logging.getLogger("watchfiles").setLevel(logging.WARNING)
+# --------------------------------------------------------------------- log levels
 
-logging.getLogger("pyiceberg.io").setLevel(logging.WARNING)
-
-logging.getLogger("mapr.ojai.storage.OJAIConnection").setLevel(logging.WARNING)
-logging.getLogger("mapr.ojai.storage.OJAIDocumentStore").setLevel(logging.WARNING)
+for noisy in ("urllib3", "httpcore", "httpx", "requests", "watchfiles", "botocore",
+              "boto3", "s3transfer", "pyiceberg.io", "openai", "asyncio"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
