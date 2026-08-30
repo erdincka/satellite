@@ -22,3 +22,6 @@ derby.log
 # frontend build output and dependencies (the image builds these)
 frontend/node_modules/
 backend/static/
+
+# cluster truststore, supplied by the operator
+secrets/

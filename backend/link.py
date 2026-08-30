@@ -15,6 +15,10 @@ do accumulate, and resuming really does drain them — which is the point worth 
 
 Replication is multi-master, so both directions are paused together: descriptions stop
 reaching the edge and requests stop reaching HQ, exactly as a severed link would behave.
+
+The link governs both mechanisms the demo uses. Streams carry descriptions and requests
+continuously; the edge's assets volume is a mirror of HQ's outbound volume and is pulled
+on demand. Cutting the link stops both, which is what a real outage does.
 """
 
 from __future__ import annotations
@@ -44,7 +48,17 @@ class Link:
         self.last_change = time.time()
         self.next_change: float | None = None
         self.last_error: str | None = None
+        self._mirror_cache: dict = {"known": False}
+        self._mirror_checked = 0.0
         self._task: asyncio.Task | None = None
+
+    def _mirror_cache_due(self) -> bool:
+        """Mirror state is a REST call; snapshot() runs every second, so cache it."""
+        if time.time() - self._mirror_checked < 5:
+            return False
+        self._mirror_checked = time.time()
+        self._mirror_cache = self.mirror_state()
+        return True
 
     # ------------------------------------------------------------------ cluster
 
@@ -97,6 +111,48 @@ class Link:
             await asyncio.to_thread(self._set_replication, False)
             self.next_change = time.time() + self.interval
 
+    # ------------------------------------------------------------------- mirror
+
+    def mirror_now(self) -> tuple[bool, str]:
+        """Pull the edge's assets volume from HQ's outbound volume.
+
+        This is the moment bandwidth is actually spent on imagery. Data Fabric moves the
+        bytes; the application only asked for it.
+        """
+        profile = CONNECTIONS.profile("EDGE")
+        volume = sites.EDGE.assets_volume
+        response = profile.rest("volume/mirror/start", {"name": volume},
+                                method="POST", timeout=60)
+        reason = profile.failed(response)
+        if reason:
+            logger.error("Could not start mirror of %s: %s", volume, reason)
+            return False, reason
+        logger.info("Mirror started for %s", volume)
+        return True, "mirror started"
+
+    def mirror_state(self) -> dict:
+        """Where the edge's mirror has got to, read from the cluster."""
+        profile = CONNECTIONS.profile("EDGE")
+        response = profile.rest("volume/info", {
+            "name": sites.EDGE.assets_volume,
+            "columns": "mirrorstatus,lastSuccessfulMirrorTime,mirrorpercentcomplete,"
+                       "mirrorSrcVolume",
+        }, timeout=15)
+        if profile.failed(response):
+            return {"known": False}
+        record = (response.get("data") or [{}])[0]
+        last = record.get("lastSuccessfulMirrorTime") or 0
+        # mirrorstatus 0 means the last run succeeded.
+        status = record.get("mirrorstatus")
+        return {
+            "known": True,
+            "source": record.get("mirrorSrcVolume"),
+            "percent": record.get("mirrorpercentcomplete"),
+            "running": str(status) == "1",
+            "ok": str(status) == "0",
+            "secondsSinceSync": (round(time.time() - last / 1000) if last else None),
+        }
+
     async def sync_now(self) -> None:
         """Open the link immediately for one window, whatever the mode.
 
@@ -104,6 +160,8 @@ class Link:
         moment to spend the link.
         """
         await asyncio.to_thread(self._set_replication, True)
+        # Opening the link means both mechanisms flow, so pull the imagery too.
+        await asyncio.to_thread(self.mirror_now)
         self.next_change = time.time() + self.window
         if self.mode == DISCONNECTED:
             self.mode = SCHEDULED
@@ -120,6 +178,7 @@ class Link:
                                             if self.mode == SCHEDULED else None)
                     else:
                         await asyncio.to_thread(self._set_replication, True)
+                        await asyncio.to_thread(self.mirror_now)
                         self.next_change = time.time() + self.window
             except asyncio.CancelledError:
                 raise
@@ -144,6 +203,7 @@ class Link:
         return {
             "mode": self.mode,
             "open": self.open,
+            "mirror": self.mirror_state() if self._mirror_cache_due() else self._mirror_cache,
             "interval": self.interval,
             "window": self.window,
             "secondsToChange": (round(self.next_change - time.time(), 1)

@@ -26,7 +26,8 @@ Each site owns its objects and attaches only to its own stream:
 | Volume | `satellite-hq` at `/apps/satellite-hq` | `satellite-edge` at `/apps/satellite-edge` |
 | Stream | `/apps/satellite-hq/hq-stream` | `/apps/satellite-edge/edge-stream` |
 | Internal stream | `/apps/satellite-hq/hq-pipeline` | — |
-| Assets bucket | `hq-assets` | `edge-assets` |
+| Imagery volume | `satellite-hq-assets` | `satellite-edge-assets` (**mirror**) |
+| Outbound volume | `satellite-hq-outbound` | — |
 | Iceberg warehouse | `hq-warehouse` | `edge-warehouse` |
 
 **Neither side ever reads or writes the other's stream.** The two streams are paired
@@ -44,10 +45,12 @@ undercut the point.
 Bulk data moves separately and only on request. The description is cheap and travels
 continuously; the image is expensive and travels only when a field team asks for it.
 
-**What moves the bytes.** Descriptions and requests travel by Data Fabric stream
-replication. The imagery itself is copied by the application over S3 — the interface
-says so, because a demo that let an audience assume otherwise would be misleading about
-the one thing it exists to show.
+**Data Fabric moves everything.** Descriptions and requests travel by stream
+replication. The imagery travels by **volume mirroring**: HQ stages a requested asset
+into `satellite-hq-outbound`, and the edge's imagery volume is a mirror of it. The edge
+pulls that mirror when it decides to spend the link — on demand, on a schedule, or not
+at all while the link is down. The application never copies the bytes itself; it stages
+them and asks Data Fabric to move them.
 
 ### Cutting the link
 
@@ -57,9 +60,13 @@ edge stops hearing about it, the backlog builds on the cluster and in the lag ch
 restoring the link drains it within seconds. Scheduled mode opens the link for a window
 every interval, which is closer to how a constrained link is actually run.
 
+Imagery follows the same rule: while the link is down the edge cannot mirror, so a
+requested asset sits staged in HQ's outbound volume until the link returns. **Mirror
+now** pulls it deliberately.
+
 This is the part worth showing to anyone designing for intermittent connectivity:
 nothing is simulated, the messages really do queue on the cluster and really do catch
-up.
+up, and the imagery really is moved by Data Fabric rather than by the app.
 
 ## The interface
 
@@ -86,12 +93,44 @@ A reachable Data Fabric cluster (7.x or 8.x) with:
 | `cldb` | 7222 | Streams, via the native client |
 | `s3server` | 9000 | Imagery and the Iceberg warehouse |
 
-S3 credentials are minted per-user with `s3keys gentempkey` and refreshed as they
-expire, so there are no long-lived object-store secrets to store or rotate.
+S3 is used only for the Iceberg warehouse; credentials are minted per-user with
+`s3keys gentempkey` and refreshed as they expire, so there are no long-lived
+object-store secrets to store or rotate.
 
-The demo ships as a container built on `maprtech/pacc`, because streams need the Data
-Fabric client libraries. It does **not** need a FUSE/NFS mount and never calls
-`maprcli` — provisioning is REST and assets are S3.
+### What the container needs
+
+Imagery lives on Data Fabric volumes, so the container mounts the cluster's NFS export
+and needs privileges to do it. It never calls `maprcli` — provisioning is REST.
+
+| Requirement | Why |
+|---|---|
+| `--cap-add SYS_ADMIN` | Mounting NFS is a privileged operation |
+| Cluster NFS reachable on **2049** | Imagery is read and written over `/mapr` |
+| Cluster CLDB on **7222**, apiserver **8443**, S3 **9000** | Streams, provisioning, warehouse |
+| `ssl_truststore` from the cluster | A secure cluster will not authenticate without it |
+| `linux/amd64` | The Data Fabric client is x86-only |
+
+The truststore is the one file you must supply. Copy `/opt/mapr/conf/ssl_truststore`
+from any cluster node, then either bind-mount it:
+
+```bash
+-v /path/to/ssl_truststore:/opt/mapr/conf/ssl_truststore:ro
+```
+
+or, if your Docker context points at a **remote host** (where a bind mount would resolve
+on that host rather than yours), pass it in `.env`:
+
+```bash
+MAPR_TRUSTSTORE_B64=$(base64 -w0 ssl_truststore)
+```
+
+It cannot be generated from the cluster's server certificate — the CLDB handshake
+rejects one built that way.
+
+> The MapR FUSE client would avoid NFS, and does not work in a container: it creates the
+> mount, the process exits immediately, and every access then fails with "Transport
+> endpoint is not connected" — including under `--privileged`, with an empty log. NFS
+> mounts first try and is what the original demo used.
 
 **HQ and the edge may point at the same cluster.** They stay separate by volume, stream
 and bucket, so the demo behaves identically whether you have one cluster or two.
@@ -109,7 +148,9 @@ Set `DF_HOST` and credentials in `.env`, then:
 docker compose up --build -d
 ```
 
-Then open <http://localhost:8080>. Set `PORT` in `.env` if 8080 is taken.
+Then open <http://localhost:8080> — or the Docker host's address if your Docker context
+points at a remote machine, since the port is published there and not on your localhost.
+Set `PORT` in `.env` if 8080 is taken.
 
 Each site's cluster can also be set from the interface — click the host next to a site's
 name — so you can repoint the demo at a customer's cluster without restarting anything.
@@ -184,6 +225,7 @@ Known limitations:
   ships a working client, so most builds need neither.
 - One container configures one Data Fabric client, so a two-cluster split relies on the
   trust relationship between them.
+- The cluster's `ssl_truststore` must be supplied; it cannot be derived.
 - With one cluster the two-site split is real in every respect except geography.
 
 ## Contributing

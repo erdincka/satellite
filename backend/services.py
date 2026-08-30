@@ -18,11 +18,12 @@ from __future__ import annotations
 import logging
 import random
 import time
+from pathlib import Path
 
 import assets
 import metrics
 import iceberger
-import objectstore
+import filestore
 import settings
 import sites
 import streams
@@ -70,7 +71,8 @@ def pipeline_to_broadcast() -> None:
                                 sites.TOPIC_PIPELINE, GROUP_PIPELINE):
         asset = assets.HQ_BOARD.get(record.get("key", "")) or Asset.from_record(record)
 
-        ok, detail = objectstore.store_asset(CONNECTIONS.profile("HQ"), HQ_SITE, asset.key)
+        ok, detail = filestore.store_asset(
+            "HQ", asset.key, Path(settings.IMAGE_STAGING) / asset.key)
         if not ok:
             assets.HQ_BOARD.fail(asset, detail)
             continue
@@ -110,11 +112,11 @@ def request_listener() -> None:
         asset.status = "requested"
         assets.HQ_BOARD.place(asset, "request")
 
-        ok, detail = objectstore.deliver_to_edge(
-            CONNECTIONS.profile("HQ"), HQ_SITE, CONNECTIONS.profile("EDGE"), EDGE_SITE, asset.key)
+        # HQ only stages the asset. Data Fabric moves it when the edge mirrors that
+        # volume, which is the edge's decision and the edge's bandwidth.
+        ok, detail = filestore.stage_for_mirror(asset.key)
         if ok:
-            metrics.HQ.count("delivered")
-            # detail reads "<n> KB delivered"; record the bytes actually spent on the link.
+            metrics.HQ.count("staged")
             try:
                 metrics.HQ.record_bytes(int(float(detail.split()[0]) * 1024))
             except (ValueError, IndexError):
@@ -123,12 +125,12 @@ def request_listener() -> None:
             assets.HQ_BOARD.fail(asset, detail)
             continue
 
-        asset.status = "delivered"
+        asset.status = "staged"
         if streams.produce(CONNECTIONS.profile("HQ"), HQ_SITE.stream, sites.TOPIC_RESPONSES,
                            [asset.to_record()]):
             assets.HQ_BOARD.place(asset, "response")
         else:
-            assets.HQ_BOARD.fail(asset, "Delivered the asset but could not confirm to the edge")
+            assets.HQ_BOARD.fail(asset, "Staged the asset but could not confirm to the edge")
 
 
 def hq_cycle() -> None:
@@ -169,15 +171,26 @@ def request_asset(asset: Asset) -> bool:
 
 
 def response_listener() -> None:
-    """Notice HQ's confirmations that an asset has landed in the edge's bucket."""
+    """Notice HQ's confirmations, and promote assets the mirror has actually brought over.
+
+    A confirmation only means the asset is staged upstream. It is not delivered until
+    the mirror has run and the bytes are present in the edge's own volume — which is
+    the distinction the demo exists to show, so the board reflects it.
+    """
     for record in streams.drain(CONNECTIONS.profile("EDGE"), EDGE_SITE.stream,
                                 sites.TOPIC_RESPONSES, GROUP_RESPONSES):
-        if record.get("status") != "delivered":
+        if record.get("status") != "staged":
             continue
         asset = assets.EDGE_BOARD.get(record.get("key", "")) or Asset.from_record(record)
-        asset.status = "delivered"
-        assets.EDGE_BOARD.place(asset, "response")
-        metrics.EDGE.count("delivered")
+        asset.status = "awaiting mirror"
+        assets.EDGE_BOARD.place(asset, "request")
+
+    # Anything waiting on the mirror that has now arrived becomes Delivered.
+    for asset in assets.EDGE_BOARD.column("request"):
+        if filestore.has_asset("EDGE", asset.key):
+            asset.status = "delivered"
+            assets.EDGE_BOARD.place(asset, "response")
+            metrics.EDGE.count("delivered")
 
 
 def edge_cycle() -> None:
@@ -191,11 +204,11 @@ def edge_cycle() -> None:
 CODE = {
     "HQ": {
         "pipeline": [publish_to_pipeline, streams.produce],
-        "download": [objectstore.store_asset],
+        "download": [filestore.store_asset],
         "record": [iceberger.write_asset],
         "broadcast": [pipeline_to_broadcast],
         "request": [request_listener],
-        "response": [objectstore.deliver_to_edge],
+        "response": [filestore.stage_for_mirror],
     },
     "EDGE": {
         "receive": [broadcast_listener, streams.drain],

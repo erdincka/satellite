@@ -157,7 +157,10 @@ class SiteRunner:
                 "volumePath": site.volume_path,
                 "stream": site.stream,
                 "pipelineStream": site.pipeline_stream,
-                "assetsBucket": site.assets_bucket,
+                "assetsVolume": site.assets_volume,
+                "assetsPath": site.assets_path,
+                "outboundVolume": site.outbound_volume,
+                "mirrorSource": site.mirror_source,
                 "warehouseBucket": site.warehouse_bucket,
             },
             "stages": [
@@ -246,8 +249,14 @@ def full_state() -> dict:
     import aiclient
     from link import LINK
 
+    import filestore
+    import jobs
+
     endpoint, model = aiclient.current()
     return {
+        "job": jobs.JOB.snapshot(),
+        "mounts": {side: dict(zip(("ok", "detail"), filestore.mounted(side)))
+                   for side in ("HQ", "EDGE")},
         "model": {"endpoint": endpoint, "model": model, "configured": bool(endpoint)},
         "link": LINK.snapshot(),
         "sites": {side: runner.snapshot() for side, runner in RUNNERS.items()},

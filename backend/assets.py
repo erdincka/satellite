@@ -78,7 +78,7 @@ class Asset:
 
     @classmethod
     def from_record(cls, record: dict, stage: str = "pipeline") -> "Asset":
-        from objectstore import object_name
+        from filestore import object_name
 
         preview = record.get("preview", "")
         return cls(

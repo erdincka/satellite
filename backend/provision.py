@@ -93,6 +93,30 @@ def _topic(profile: Profile, stream: str, topic: str) -> Step:
     return Step(f"Topic {topic}", True, "existing" if reason else "created")
 
 
+def _mirror_volume(profile: Profile, name: str, path: str, source: str,
+                   source_cluster: str) -> Step:
+    """Create the edge's assets volume as a mirror of HQ's outbound volume.
+
+    This is what carries imagery between the sites. Plain volumes, deliberately: a
+    mirror of a *bucket* volume cannot be removed over REST afterwards, which would
+    leave residue behind on every Reset.
+    """
+    existing = profile.rest("volume/info", {"name": name, "columns": "volumename,volumetype"})
+    if not profile.failed(existing):
+        return Step(f"Mirror {name}", True, f"already mirrors {source}")
+
+    # Data Fabric requires the source qualified as volume@cluster even when the mirror
+    # lives on the same cluster.
+    target = f"{source}@{source_cluster}"
+    response = profile.rest("volume/create", {
+        "path": path, "name": name, "type": "mirror", "source": target,
+    }, method="POST")
+    reason = profile.failed(response)
+    if reason and not _exists_already(reason):
+        return Step(f"Mirror {name}", False, reason)
+    return Step(f"Mirror {name}", True, f"mirrors {target}")
+
+
 def _bucket(profile: Profile, name: str) -> Step:
     """Create a bucket and let the object store decide where to put it.
 
@@ -190,8 +214,13 @@ def configure(profile: Profile, site: Site, peer: Site | None = None,
               peer_profile: Profile | None = None,
               report: Reporter | None = None) -> Iterator[Step]:
     """Prepare one site. HQ also creates the topics and the replication pair."""
+    # The edge's assets volume is a mirror and must be created as one, so it is
+    # excluded from the plain-volume list here.
+    plain = [v for v in site.volumes
+             if not (site.side == "EDGE" and v[0] == site.assets_volume)]
+
     steps: list[Callable[[], Step]] = [
-        lambda: _volume(profile, site.volume_name, site.volume_path),
+        *[(lambda n=n, p=p: _volume(profile, n, p)) for n, p in plain],
         *[(lambda b=b: _bucket(profile, b)) for b in site.buckets],
     ]
 
@@ -210,6 +239,10 @@ def configure(profile: Profile, site: Site, peer: Site | None = None,
                 lambda: _replication(
                     profile, site.stream, peer.stream,
                     None if same_cluster else (peer_profile.cluster_name if peer_profile else None)),
+                # Created last, once its source volume exists.
+                lambda: _mirror_volume(
+                    peer_profile or profile, peer.assets_volume, peer.assets_path,
+                    site.outbound_volume or "", profile.cluster_name),
             ]
         steps.append(stage_images)
 
@@ -273,10 +306,12 @@ def _remove_volume(profile: Profile, name: str) -> Step:
 
 def reset(profile: Profile, site: Site, report: Reporter | None = None) -> Iterator[Step]:
     """Remove everything this site owns, in dependency order."""
+    # Children before parents: a volume mounted inside another must go first.
+    volumes = [name for name, _ in reversed(site.volumes)]
     steps: list[Callable[[], Step]] = [
         *[(lambda s=s: _delete_stream(profile, s)) for s in site.streams],
         *[(lambda b=b: _empty_bucket(profile, b)) for b in site.buckets],
-        lambda: _remove_volume(profile, site.volume_name),
+        *[(lambda v=v: _remove_volume(profile, v)) for v in volumes],
     ]
 
     for make_step in steps:

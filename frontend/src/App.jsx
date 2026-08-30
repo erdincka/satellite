@@ -13,7 +13,7 @@ const ACCENT = { HQ: '#6366f1', EDGE: '#14b8a6' }
 export default function App() {
   const { state, connected } = useLiveState()
   const [dialog, setDialog] = useState(null)
-  const [steps, setSteps] = useState({ open: false, title: '', items: [], busy: false })
+  const [showJob, setShowJob] = useState(false)
   const [toast, setToast] = useState(null)
 
   const notify = useCallback((text, bad) => {
@@ -21,25 +21,18 @@ export default function App() {
     setTimeout(() => setToast(null), 4000)
   }, [])
 
-  const runSteps = async (title, promise) => {
-    setSteps({ open: true, title, items: [], busy: true })
-    try {
-      const { steps: items } = await promise
-      setSteps({ open: true, title, items, busy: false })
-      const failed = items.filter((s) => !s.ok).length
-      if (failed) notify(`${failed} step(s) failed`, true)
-    } catch (e) {
-      setSteps({ open: false, title, items: [], busy: false })
-      notify(String(e.message), true)
-    }
+  // The server owns the job; the dialog just watches pushed state.
+  const runJob = async (promise) => {
+    setShowJob(true)
+    try { await promise } catch (e) { setShowJob(false); notify(String(e.message), true) }
   }
 
   const actions = {
     editConnection: (side) => setDialog({ kind: 'connection', side }),
     setRunning: (side, value) => api.setRunning(side, value).catch((e) => notify(e.message, true)),
     step: (side) => api.step(side).catch((e) => notify(e.message, true)),
-    configure: (side) => runSteps(`Preparing ${side}`, api.configure(side)),
-    reset: (side) => runSteps(`Resetting ${side}`, api.reset(side)),
+    configure: (side) => runJob(api.configure(side)),
+    reset: (side) => runJob(api.reset(side)),
   }
 
   const requestAsset = async (asset) => {
@@ -91,10 +84,7 @@ export default function App() {
       {dialog?.kind === 'model' && (
         <ModelDialog model={state.model} onClose={() => setDialog(null)} />
       )}
-      {steps.open && (
-        <StepsDialog title={steps.title} steps={steps.items} busy={steps.busy}
-                     onClose={() => setSteps({ ...steps, open: false })} />
-      )}
+      {showJob && <StepsDialog job={state.job} onClose={() => setShowJob(false)} />}
       {toast && (
         <div className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md px-3 py-2
                          text-sm shadow-lg ${toast.bad ? 'bg-rose-700 text-white'

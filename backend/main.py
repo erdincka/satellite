@@ -23,8 +23,9 @@ import aiclient
 import assets
 import dfabric
 import iceberger
+import jobs
 import link as link_module
-import objectstore
+import filestore
 import provision
 import runner
 import settings
@@ -166,22 +167,26 @@ async def step_once(side: str) -> dict:
 
 @app.post("/api/sites/{side}/configure")
 async def configure_site(side: str) -> dict:
-    """Provision this site. HQ also creates the topics and the replication pair."""
+    """Provision this site, reporting progress as it goes.
+
+    Returns as soon as the job starts; each step appears in pushed state, so the
+    interface fills in a checklist rather than sitting on a static message.
+    """
     _check_side(side)
     site_runner = runner.for_side(side)
-    profile, site = site_runner.profile, site_runner.site
     peer = sites.EDGE if side.upper() == "HQ" else None
     peer_profile = CONNECTIONS.profile("EDGE") if side.upper() == "HQ" else None
 
-    def work() -> list[dict]:
-        return [
-            {"name": s.name, "ok": s.ok, "detail": s.detail, "skipped": s.skipped}
-            for s in provision.configure(profile, site, peer, peer_profile)
-        ]
+    if jobs.JOB.busy:
+        raise HTTPException(409, "Another operation is already running")
 
-    steps = await asyncio.to_thread(work)
-    await site_runner.refresh_status()
-    return {"steps": steps, "ready": site_runner.ready}
+    asyncio.create_task(jobs.JOB.run(
+        "configure", side,
+        lambda: provision.configure(site_runner.profile, site_runner.site,
+                                    peer, peer_profile),
+        after=site_runner.refresh_status,
+    ))
+    return {"started": True}
 
 
 @app.post("/api/sites/{side}/reset")
@@ -190,16 +195,19 @@ async def reset_site(side: str) -> dict:
     site_runner = runner.for_side(side)
     site_runner.set_running(False)
 
-    def work() -> list[dict]:
-        return [
-            {"name": s.name, "ok": s.ok, "detail": s.detail, "skipped": s.skipped}
-            for s in provision.reset(site_runner.profile, site_runner.site)
-        ]
+    if jobs.JOB.busy:
+        raise HTTPException(409, "Another operation is already running")
 
-    steps = await asyncio.to_thread(work)
-    assets.board_for(side).clear()
-    await site_runner.refresh_status()
-    return {"steps": steps, "ready": site_runner.ready}
+    def after():
+        assets.board_for(side).clear()
+        return site_runner.refresh_status()
+
+    asyncio.create_task(jobs.JOB.run(
+        "reset", side,
+        lambda: provision.reset(site_runner.profile, site_runner.site),
+        after=after,
+    ))
+    return {"started": True}
 
 
 @app.post("/api/sites/EDGE/request/{key}")
@@ -239,6 +247,13 @@ async def set_link(body: LinkMode) -> dict:
     return link_module.LINK.snapshot()
 
 
+@app.post("/api/link/mirror")
+async def mirror_now() -> dict:
+    """Pull the edge's assets volume from HQ's outbound volume, now."""
+    ok, detail = await asyncio.to_thread(link_module.LINK.mirror_now)
+    return {"ok": ok, "detail": detail}
+
+
 @app.post("/api/link/sync")
 async def sync_link() -> dict:
     """Open the link now for one window — an operator spending the link deliberately."""
@@ -253,9 +268,7 @@ async def sync_link() -> dict:
 @app.get("/api/assets/{side}/{key}/image")
 async def asset_image(side: str, key: str):
     _check_side(side)
-    site = sites.for_side(side)
-    data = await asyncio.to_thread(
-        objectstore.get_bytes, CONNECTIONS.profile(side), site.assets_bucket, key)
+    data = await asyncio.to_thread(filestore.read_asset, side, key)
     if data is None:
         return Response(status_code=404)
     media = "image/png" if key.lower().endswith(".png") else "image/jpeg"

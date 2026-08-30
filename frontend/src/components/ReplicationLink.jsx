@@ -7,10 +7,10 @@ import { api } from '../api'
  * and cheaply, requests flow back, and the image itself crosses only when a field team
  * asks for it.
  *
- * It distinguishes what Data Fabric moves from what the application moves. The two
- * stream lanes are genuine replication, read from the cluster's own replica state. The
- * imagery lane is an S3 copy the app performs itself, and says so — a demo that let an
- * audience assume otherwise would be misleading about the one thing it exists to show.
+ * Everything here is Data Fabric moving data, read from the cluster's own state: the
+ * stream pair replicates descriptions and requests continuously, and the edge's assets
+ * volume is a mirror of HQ's outbound volume, pulled when the edge decides to spend the
+ * link.
  */
 export default function ReplicationLink({ hq, edge, sameCluster, link, notify }) {
   const replication = hq.status?.replication
@@ -34,6 +34,9 @@ export default function ReplicationLink({ hq, edge, sameCluster, link, notify })
   }
   const syncNow = async () => {
     try { await api.syncNow() } catch (e) { notify?.(String(e.message), true) }
+  }
+  const mirrorNow = async () => {
+    try { await api.mirrorNow() } catch (e) { notify?.(String(e.message), true) }
   }
 
   return (
@@ -66,13 +69,11 @@ export default function ReplicationLink({ hq, edge, sameCluster, link, notify })
       </div>
 
       <div className="w-full">
-        <div className="label mb-1.5">Application copy</div>
+        <div className="label mb-1.5">Volume mirror</div>
         <Lane label="Imagery" sub={humanBytes(bytes)} direction="right"
-              value={delivered} active={delivered > 0 && !down} tone="orange" />
-        <p className="mt-1 text-[9px] leading-snug text-slate-600">
-          Copied by the app over S3, not replicated — only the descriptions and requests
-          above travel by Data Fabric.
-        </p>
+              value={delivered} active={(link?.mirror?.running || delivered > 0) && !down}
+              tone="orange" />
+        <MirrorState mirror={link?.mirror} onMirror={mirrorNow} down={down} />
       </div>
 
       <div className="w-full rounded border border-slate-800 bg-slate-900/50 p-2">
@@ -138,6 +139,35 @@ function LinkControl({ link, onMode, onSync, queued }) {
           Sync now
         </button>
       )}
+    </div>
+  )
+}
+
+/** The edge's assets volume, mirrored from HQ's outbound volume. */
+function MirrorState({ mirror, onMirror, down }) {
+  if (!mirror?.known) {
+    return <p className="mt-1 text-[9px] text-slate-600">
+      Mirror not configured yet — prepare HQ.
+    </p>
+  }
+  const since = mirror.secondsSinceSync
+  return (
+    <div className="mt-1">
+      <div className="flex items-center justify-between text-[9px] text-slate-500">
+        <span>{mirror.running ? 'mirroring now…'
+              : since == null ? 'never synced'
+              : `synced ${since < 90 ? `${since}s` : `${Math.round(since / 60)}m`} ago`}</span>
+        {mirror.percent != null && mirror.running && <span>{mirror.percent}%</span>}
+      </div>
+      <button onClick={onMirror} disabled={down}
+              className="mt-1 w-full rounded bg-slate-800 py-1 text-[10px] font-medium
+                         text-slate-200 hover:bg-slate-700 disabled:opacity-40">
+        Mirror now
+      </button>
+      <p className="mt-1 text-[9px] leading-snug text-slate-600">
+        Data Fabric moves these bytes — the edge pulls HQ's outbound volume when it
+        chooses to spend the link.
+      </p>
     </div>
   )
 }

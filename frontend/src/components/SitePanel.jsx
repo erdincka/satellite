@@ -99,9 +99,11 @@ function Objects({ objects }) {
   const rows = [
     ['Volume', objects.volume],
     ['Stream', objects.stream],
-    ['Assets', objects.assetsBucket],
+    ['Imagery', objects.assetsVolume],
+    objects.outboundVolume && ['Outbound', objects.outboundVolume],
+    objects.mirrorSource && ['Mirrors', objects.mirrorSource],
     ['Warehouse', objects.warehouseBucket],
-  ]
+  ].filter(Boolean)
   return (
     <details className="mt-auto">
       <summary className="cursor-pointer text-[10px] uppercase tracking-wider text-slate-500

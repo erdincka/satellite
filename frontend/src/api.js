@@ -34,6 +34,7 @@ export const api = {
   setPace: (body) => call('/api/pace', { method: 'PUT', body: JSON.stringify(body) }),
   setLink: (body) => call('/api/link', { method: 'PUT', body: JSON.stringify(body) }),
   syncNow: () => call('/api/link/sync', { method: 'POST' }),
+  mirrorNow: () => call('/api/link/mirror', { method: 'POST' }),
 }
 
 export const imageUrl = (side, key) =>

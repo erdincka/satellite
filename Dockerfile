@@ -46,7 +46,7 @@ ENV LD_LIBRARY_PATH=/opt/mapr/lib \
 # compat-openssl11: the Data Fabric librdkafka links against OpenSSL 1.1 while Rocky 9
 # ships OpenSSL 3, so importing the streams client fails on libssl.so.1.1 without it.
 RUN dnf install -y --setopt=tsflags=nodocs \
-        gcc gcc-c++ make openssl \
+        gcc gcc-c++ make openssl nfs-utils \
         java-11-openjdk-headless compat-openssl11 \
         findutils procps-ng \
     && dnf clean all

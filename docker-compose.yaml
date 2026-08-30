@@ -19,11 +19,25 @@ services:
     platform: linux/amd64   # the Data Fabric client is x86-only
     env_file:
       - .env
+    # Imagery lives on Data Fabric volumes reached over NFS, and mounting requires
+    # CAP_SYS_ADMIN. The cluster's NFS service must be reachable on port 2049.
+    cap_add:
+      - SYS_ADMIN
+    devices: []
+    security_opt:
+      - apparmor:unconfined
     ports:
+      # Published on the Docker host, which is not localhost if your Docker context
+      # points at a remote machine.
       - "${PORT:-8080}:8080"
     volumes:
       # Cluster connections entered in the interface survive a restart.
       - satellite-state:/app/state
+      # The cluster's truststore, copied from /opt/mapr/conf/ssl_truststore on any
+      # cluster node. A secure cluster will not authenticate without it. If your Docker
+      # context is a remote host this path is resolved there, so pass the file as
+      # MAPR_TRUSTSTORE_B64 in .env instead.
+      - ./secrets/ssl_truststore:/opt/mapr/conf/ssl_truststore:ro
     # A container's default resolver can be slow to answer, and every cluster call pays
     # for it. Uncomment and point at a resolver that answers promptly if status feels
     # sluggish. The app also pins each cluster's address after the first lookup.
