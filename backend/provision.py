@@ -148,12 +148,23 @@ def _replication(profile: Profile, source: str, replica: str,
     """
     target = f"{replica}@{replica_cluster}" if replica_cluster else replica
 
+    # A replica record can outlive the stream it points at — resetting the edge deletes
+    # the stream but leaves the pairing listed, and trusting that record alone meant the
+    # edge's stream was never recreated and the site could not be prepared again. Check
+    # the replica stream actually exists before believing the pairing.
+    replica_exists = profile.failed(profile.rest("stream/info", {"path": replica},
+                                                 timeout=15)) is None
     existing = profile.rest("stream/replica/list", {"path": source})
-    if not profile.failed(existing):
+    if replica_exists and not profile.failed(existing):
         for record in existing.get("data") or []:
             if record.get("replicaPath") == replica:
                 state = "up to date" if record.get("isUptodate") else record.get("replicaState", "")
                 return Step("Stream replication", True, f"already paired, {state}")
+
+    if not replica_exists:
+        # Clear the stale pairing so autosetup can recreate it.
+        profile.rest("stream/replica/remove", {"path": source, "replica": replica},
+                     method="POST", timeout=60)
 
     response = profile.rest("stream/replica/autosetup", {
         "path": source, "replica": target, "multimaster": "true",
