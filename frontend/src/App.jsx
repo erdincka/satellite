@@ -70,7 +70,8 @@ export default function App() {
                    onSelect={(a) => setDialog({ kind: 'asset', side: 'HQ', asset: a })}
                    onRequest={requestAsset} />
 
-        <ReplicationLink hq={hq} edge={edge} sameCluster={state.sameCluster} />
+        <ReplicationLink hq={hq} edge={edge} sameCluster={state.sameCluster}
+                         link={state.link} notify={notify} />
 
         <SitePanel site={edge} accent={ACCENT.EDGE} actions={actions}
                    onSelect={(a) => setDialog({ kind: 'asset', side: 'EDGE', asset: a })}

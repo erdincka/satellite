@@ -32,6 +32,8 @@ export const api = {
   getModel: () => call('/api/model'),
   setModel: (body) => call('/api/model', { method: 'PUT', body: JSON.stringify(body) }),
   setPace: (body) => call('/api/pace', { method: 'PUT', body: JSON.stringify(body) }),
+  setLink: (body) => call('/api/link', { method: 'PUT', body: JSON.stringify(body) }),
+  syncNow: () => call('/api/link/sync', { method: 'POST' }),
 }
 
 export const imageUrl = (side, key) =>

@@ -44,6 +44,23 @@ undercut the point.
 Bulk data moves separately and only on request. The description is cheap and travels
 continuously; the image is expensive and travels only when a field team asks for it.
 
+**What moves the bytes.** Descriptions and requests travel by Data Fabric stream
+replication. The imagery itself is copied by the application over S3 — the interface
+says so, because a demo that let an audience assume otherwise would be misleading about
+the one thing it exists to show.
+
+### Cutting the link
+
+The link between the sites can be **On**, **Scheduled** or **Cut**, and it pauses and
+resumes Data Fabric stream replication for real. Cut it and HQ keeps ingesting while the
+edge stops hearing about it, the backlog builds on the cluster and in the lag chart, and
+restoring the link drains it within seconds. Scheduled mode opens the link for a window
+every interval, which is closer to how a constrained link is actually run.
+
+This is the part worth showing to anyone designing for intermittent connectivity:
+nothing is simulated, the messages really do queue on the cluster and really do catch
+up.
+
 ## The interface
 
 One page, both sites side by side, with the **Data Fabric link** between them — that

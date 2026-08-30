@@ -244,10 +244,12 @@ HUB = Hub()
 
 def full_state() -> dict:
     import aiclient
+    from link import LINK
 
     endpoint, model = aiclient.current()
     return {
         "model": {"endpoint": endpoint, "model": model, "configured": bool(endpoint)},
+        "link": LINK.snapshot(),
         "sites": {side: runner.snapshot() for side, runner in RUNNERS.items()},
         "sameCluster": CONNECTIONS.same_cluster(),
         "feedSize": len(_feed()),

@@ -23,6 +23,7 @@ import aiclient
 import assets
 import dfabric
 import iceberger
+import link as link_module
 import objectstore
 import provision
 import runner
@@ -53,11 +54,13 @@ async def lifespan(app: FastAPI):
 
     for site_runner in runner.RUNNERS.values():
         site_runner.start()
+    link_module.LINK.start()
     pusher = asyncio.create_task(runner.HUB.push_state_forever(), name="state-push")
 
     yield
 
     pusher.cancel()
+    await link_module.LINK.stop()
     for site_runner in runner.RUNNERS.values():
         await site_runner.stop()
     await asyncio.to_thread(streams.close_all)
@@ -207,6 +210,41 @@ async def request_asset(key: str) -> dict:
         raise HTTPException(404, f"{key} is not available at the edge")
     ok = await asyncio.to_thread(services.request_asset, asset)
     return {"ok": ok}
+
+
+# ------------------------------------------------------------------------ link
+
+
+class LinkMode(BaseModel):
+    mode: str
+    interval: float | None = None
+    window: float | None = None
+
+
+@app.put("/api/link")
+async def set_link(body: LinkMode) -> dict:
+    """Cut, schedule or restore the link between the sites.
+
+    This pauses and resumes Data Fabric stream replication for real — messages queue on
+    the cluster while it is down and drain when it comes back.
+    """
+    if body.mode not in (link_module.CONNECTED, link_module.SCHEDULED,
+                         link_module.DISCONNECTED):
+        raise HTTPException(400, f"Unknown link mode {body.mode}")
+    await link_module.LINK.set_mode(body.mode, body.interval, body.window)
+    # Status is cached for STATUS_INTERVAL, so without this the detail line keeps
+    # reporting the old state for up to fifteen seconds after the link changes — long
+    # enough to look broken while demonstrating exactly this.
+    await runner.for_side("HQ").refresh_status()
+    return link_module.LINK.snapshot()
+
+
+@app.post("/api/link/sync")
+async def sync_link() -> dict:
+    """Open the link now for one window — an operator spending the link deliberately."""
+    await link_module.LINK.sync_now()
+    await runner.for_side("HQ").refresh_status()
+    return link_module.LINK.snapshot()
 
 
 # ---------------------------------------------------------------------- assets
