@@ -1,0 +1,10 @@
+# Runtime dependencies. mapr-streams-python is installed separately in the Dockerfile
+# because it compiles against the MapR client libraries in /opt/mapr.
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+boto3>=1.35.0
+httpx>=0.28.1
+openai>=1.82.0
+pandas>=2.2.3
+pyiceberg[pyarrow,s3fs,sql-sqlite]>=0.9.1
+sqlalchemy>=2.0.41

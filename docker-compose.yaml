@@ -1,24 +1,48 @@
+# One service, two Data Fabric site connections.
+#
+# Set HQ_HOST / EDGE_HOST and credentials in .env, or leave them blank and connect from
+# the interface. Both sites may point at the same cluster.
+
 services:
   satellite:
-    platform: linux/amd64
-    image: erdincka/satellite:latest
+    build:
+      context: .
+      args:
+        # HPE's public package repository needs credentials. Point these at a mirror you
+        # can reach if you build the image yourself, and match your cluster's version —
+        # a client older than the cluster cannot authenticate to it.
+        MAPR_REPO: ${MAPR_REPO:-https://package.ezmeral.hpe.com/releases/v8.1.0/redhat}
+        MAPR_MEP_REPO: ${MAPR_MEP_REPO:-https://package.ezmeral.hpe.com/releases/MEP/MEP-10.1.0/redhat}
+    image: erdincka/satellite:2
     container_name: satellite
     restart: unless-stopped
-    environment:
-      - clusterName=maprdemo.io
-      - isSecure=true
-      - MAPR_TZ=Europe/London
-      - TZ=Europe/London
-    ports:
-      - "3000:3000"  ## required to use HQ simulator
-      - "3001:3001"  ## required to use Edge simulator
-      - "9443:9443"  ## optional for Installer UI
-      - "8443:8443"  ## optional for MCS
-      - "2222:22"  ## optional for SSH
+    platform: linux/amd64   # the Data Fabric client is x86-only
+    env_file:
+      - .env
+    # Imagery lives on Data Fabric volumes reached over NFS, and mounting requires
+    # CAP_SYS_ADMIN. The cluster's NFS service must be reachable on port 2049.
     cap_add:
       - SYS_ADMIN
-    privileged: true
+    devices: []
+    security_opt:
+      - apparmor:unconfined
+    ports:
+      # Published on the Docker host, which is not localhost if your Docker context
+      # points at a remote machine.
+      - "${PORT:-8080}:8080"
     volumes:
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/localtime:/etc/localtime:ro
-    entrypoint: ["/app/start.sh"]
+      # Cluster connections entered in the interface survive a restart.
+      - satellite-state:/app/state
+      # The cluster's truststore, copied from /opt/mapr/conf/ssl_truststore on any
+      # cluster node. A secure cluster will not authenticate without it. If your Docker
+      # context is a remote host this path is resolved there, so pass the file as
+      # MAPR_TRUSTSTORE_B64 in .env instead.
+      - ./secrets/ssl_truststore:/opt/mapr/conf/ssl_truststore:ro
+    # A container's default resolver can be slow to answer, and every cluster call pays
+    # for it. Uncomment and point at a resolver that answers promptly if status feels
+    # sluggish. The app also pins each cluster's address after the first lookup.
+    # dns:
+    #   - 1.1.1.1
+
+volumes:
+  satellite-state:

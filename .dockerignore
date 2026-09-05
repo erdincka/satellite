@@ -1,16 +1,12 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-.ropeproject/
-#.git
-
-# Virtual environments
+.git
 .venv
-
-# App artifacts
+frontend/node_modules
+frontend/dist
+backend/static
+backend/__pycache__
+**/__pycache__
 images/
-.nicegui
+*.db
+.env
+uv.lock
+*.png

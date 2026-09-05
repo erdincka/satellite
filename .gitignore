@@ -15,3 +15,13 @@ images/
 # app artifacts
 *.db
 derby.log
+
+# local connection settings (copy .env.example)
+.env
+
+# frontend build output and dependencies (the image builds these)
+frontend/node_modules/
+backend/static/
+
+# cluster truststore, supplied by the operator
+secrets/
