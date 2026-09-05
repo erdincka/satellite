@@ -278,6 +278,12 @@ It is designed to be run repeatedly against the same cluster:
 - Object names are configurable, so several people can run it against one shared cluster
   by setting `APP_NAME` differently.
 
+## Further reading
+
+[Deciding what crosses the link](docs/edge-to-core-with-data-fabric.md) — the design
+thinking behind the demo, the Data Fabric capabilities it leans on, and what building it
+taught us about architecting for constrained connectivity.
+
 ## Contributing
 
 Issues and pull requests welcome.
