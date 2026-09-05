@@ -82,6 +82,7 @@ class SiteRunner:
 
         def probe() -> tuple[dict, bool, tuple[bool | None, str]]:
             profile, site = self.profile, self.site
+            profile.resolve_cluster_name()   # blocking, hence in this worker thread
             checks = profile.check(stream=site.stream)
             configured = provision.is_configured(profile, site)
             replication = streams.replication_status(profile, site.stream)

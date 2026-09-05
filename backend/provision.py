@@ -249,11 +249,11 @@ def configure(profile: Profile, site: Site, peer: Site | None = None,
                 lambda: _peer_volume(profile, peer, same_cluster),
                 lambda: _replication(
                     profile, site.stream, peer.stream,
-                    None if same_cluster else (peer_profile.cluster_name if peer_profile else None)),
+                    None if same_cluster else (peer_profile.resolve_cluster_name() if peer_profile else None)),
                 # Created last, once its source volume exists.
                 lambda: _mirror_volume(
                     peer_profile or profile, peer.assets_volume, peer.assets_path,
-                    site.outbound_volume or "", profile.cluster_name),
+                    site.outbound_volume or "", profile.resolve_cluster_name()),
             ]
         steps.append(stage_images)
 

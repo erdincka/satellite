@@ -128,9 +128,10 @@ async def update_connection(side: str, update: ConnectionUpdate) -> dict:
 
     if settings_after.host:
         profile = CONNECTIONS.profile(side)
+        cluster_name = await asyncio.to_thread(profile.resolve_cluster_name)
         report = await asyncio.to_thread(
             clientsetup.prepare, settings_after.host, settings_after.username,
-            settings_after.password, profile.cluster_name,
+            settings_after.password, cluster_name,
             "/mapr", settings_after.rest_port)
         clientsetup.remember(side, report)
 
@@ -146,9 +147,10 @@ async def prepare_client(side: str) -> dict:
     if not settings_now.host:
         raise HTTPException(400, "No cluster configured for this site")
     profile = CONNECTIONS.profile(side)
+    cluster_name = await asyncio.to_thread(profile.resolve_cluster_name)
     report = await asyncio.to_thread(
         clientsetup.prepare, settings_now.host, settings_now.username,
-        settings_now.password, profile.cluster_name, "/mapr", settings_now.rest_port)
+        settings_now.password, cluster_name, "/mapr", settings_now.rest_port)
     clientsetup.remember(side, report)
     await runner.for_side(side).refresh_status()
     return report

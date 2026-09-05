@@ -159,13 +159,28 @@ class Profile:
 
     @property
     def cluster_name(self) -> str:
-        """The cluster's own name, needed for mirror sources (`volume@cluster`)."""
+        """The cluster's own name, needed for mirror sources (`volume@cluster`).
+
+        Never makes a network call. This is read while building the state pushed to
+        browsers once a second, and a blocking REST call there freezes the whole
+        interface whenever the cluster is slow or unreachable — every endpoint, not just
+        cluster-dependent ones. `resolve_cluster_name` does the lookup, from a worker
+        thread, on the background status probe.
+        """
+        return self._cluster_name or "unknown"
+
+    @property
+    def cluster_name_known(self) -> bool:
+        return self._cluster_name is not None
+
+    def resolve_cluster_name(self) -> str:
+        """Look the name up and cache it. Blocking — call from a worker thread."""
         if self._cluster_name is None:
-            info = self.rest("dashboard/info")
+            info = self.rest("dashboard/info", timeout=15)
             if not self.failed(info):
                 self._cluster_name = info["data"][0]["cluster"]["name"]
             else:
-                logger.warning("Could not resolve cluster name for %s", self.host)
+                logger.debug("Could not resolve cluster name for %s", self.host)
         return self._cluster_name or "unknown"
 
     # -------------------------------------------------------------- S3 credentials
