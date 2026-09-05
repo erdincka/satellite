@@ -17,6 +17,8 @@ The pattern generalises well beyond satellite imagery — disaster response, mar
 operations, remote industrial sites, defence — anywhere the link is expensive,
 intermittent, or both.
 
+![Headquarters on the left, the edge site on the right, and the live Data Fabric link between them](../app-image.png)
+
 ## The architecture in one idea
 
 **Separate the metadata plane from the data plane, and give them different transports and
@@ -84,11 +86,14 @@ link drops, you are reasoning about three or four independent recovery models at
 and the interactions between them are where the incidents come from.
 
 On Data Fabric, disconnection is handled the same way for everything, because it is the
-platform's concern rather than each component's. In the demo, cutting the link left HQ
-publishing normally while the edge stayed frozen and the backlog grew to 21 messages;
-restoring it drained to zero within seconds. Imagery behaved consistently: a requested
-asset simply sat staged in HQ's outbound volume until the edge chose to mirror it.
-Nothing about that is simulated, and nothing about it is application code.
+platform's concern rather than each component's.
+
+![Published at HQ against received at the edge, through a cut and a restore](backlog.png)
+
+Cutting the link left HQ publishing normally while the edge stayed frozen and the backlog
+grew to 21 messages; restoring it drained to zero within seconds. Imagery behaved
+consistently: a requested asset simply sat staged in HQ's outbound volume until the edge
+chose to mirror it. Nothing about that is simulated, and none of it is application code.
 
 ## What still needs designing
 
@@ -118,13 +123,74 @@ constrained link that is a real and recurring cost. Decide deliberately what cro
 ### Name objects by site, not by cluster
 
 Each site owns its own volumes, streams and buckets, distinguished by name rather than by
-which cluster they happen to live on. The consequence is that the system behaves
-identically whether both sites share one cluster or sit on two with a trust relationship.
-One is not a degraded version of the other, and moving from one to two is a configuration
-change rather than a redesign.
+which cluster they happen to live on. The system then behaves identically whether both
+sites share one cluster or sit on two with a trust relationship. One is not a degraded
+version of the other, and moving from one to two is a configuration change rather than a
+redesign.
 
-For anyone building a real edge fleet, this is the difference between a per-site
-deployment template and bespoke work at every location.
+## From two sites to a thousand
+
+This demo is a baseline, not a blueprint. A real deployment has tens or thousands of edge
+sites, and at that scale the platform features that matter are the ones you never see in
+a two-site demo. It is worth naming them, because they are the reason this pattern scales
+without becoming a bespoke integration project per location.
+
+### One namespace across many fabrics
+
+Data Fabric's **global namespace** aggregates remote and disparate data sources so that
+multiple fabrics can be viewed and operated as a single logical, local fabric. An
+application addressing data at another site does not need to know it is remote.
+
+Naming then becomes a fleet convention rather than a per-deployment choice: every cluster
+in the namespace needs a unique name, and `mapr-clusters.conf` must carry the same
+cluster configuration and naming across nodes and clients. The two-site convention in
+this demo scales only if it is designed as a scheme — region, role, site identifier —
+before the fleet exists rather than after.
+
+### Authorization that spans clusters
+
+For clusters to communicate at all, a secure **trust relationship** must exist between
+them. That trust is what permits remote commands, remote replicas and mirrors, and NFS
+access to another cluster — the exact operations this pattern depends on.
+
+Setting it up is a defined procedure rather than a bespoke integration:
+`configure-crosscluster.sh` generates a cross-cluster ticket, copies it to the other
+cluster's CLDB node, merges it into that cluster's `maprserverticket` and distributes it;
+`manageSSLKeys.sh` merges trust stores when a client must reach several clusters.
+Identity remains the platform's, not each component's — which is the point. In an
+assembled stack, cross-site authorization means federating several independent identity
+systems and keeping them consistent across sites you cannot reach.
+
+### The link itself is managed
+
+Data Fabric treats a constrained link as something to manage rather than saturate.
+
+**Mirroring throttles itself.** The sending server continuously measures round-trip time
+and restricts mirror traffic to roughly 30% of available bandwidth, backing off when
+other traffic needs it. Throttling can be disabled where a maintenance window justifies
+full speed.
+
+**Replication is compressed and can be encrypted.** Data Fabric applies network
+compression — `lz4` by default — and traffic between secure clusters can be encrypted on
+the wire. In this demo the replica record reports exactly that: `networkcompression:
+lz4`, `networkencryption: false` on a lab cluster where encryption was not required.
+
+**Mirrors run on schedules with priorities.** Schedules carry pre-assigned meanings —
+critical, important, normal — so a fleet can express that some sites sync hourly and
+others when someone asks, without writing a scheduler.
+
+### Operations and observability at fleet scale
+
+Data Fabric Monitoring collects metrics and logs for nodes, services and jobs, which is
+what makes a fleet observable centrally rather than site by site. Note that monitoring
+components are not installed on client or edge nodes — an edge site reports through its
+own cluster, so the observability design follows the fabric topology.
+
+For genuinely small sites there is **HPE Ezmeral Data Fabric Edge**: a small-footprint
+edition running on commodity hardware in three- to five-node configurations, with the
+full capability set — files, tables and streams, plus snapshots, mirroring, replication
+and compression. An edge site is a small fabric, not a cut-down client, which is why the
+same design works at both ends.
 
 ## Why it matters
 
