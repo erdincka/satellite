@@ -64,7 +64,8 @@ export default function App() {
                    onRequest={requestAsset} />
 
         <ReplicationLink hq={hq} edge={edge} sameCluster={state.sameCluster}
-                         link={state.link} notify={notify} />
+                         link={state.link} notify={notify}
+                         connected={!!(hq.connection.host && edge.connection.host)} />
 
         <SitePanel site={edge} accent={ACCENT.EDGE} actions={actions}
                    onSelect={(a) => setDialog({ kind: 'asset', side: 'EDGE', asset: a })}
@@ -137,11 +138,19 @@ function TopBar({ state, connected, notify, onReset, onConfigureModel }) {
           {connected ? 'live' : 'reconnecting'}
         </span>
 
+        {/* Nothing to reset until a cluster is connected, and offering it invites a
+            confusing failure on first run. */}
         <div className="flex gap-1">
-          <button className="btn-ghost !px-2 !py-1 !text-[11px]" onClick={() => onReset('EDGE')}>
+          <button className="btn-ghost !px-2 !py-1 !text-[11px]" onClick={() => onReset('EDGE')}
+                  disabled={!state.sites.EDGE.connection.host}
+                  title={state.sites.EDGE.connection.host ? 'Remove everything the edge owns'
+                                                          : 'Connect the edge first'}>
             Reset edge
           </button>
-          <button className="btn-ghost !px-2 !py-1 !text-[11px]" onClick={() => onReset('HQ')}>
+          <button className="btn-ghost !px-2 !py-1 !text-[11px]" onClick={() => onReset('HQ')}
+                  disabled={!state.sites.HQ.connection.host}
+                  title={state.sites.HQ.connection.host ? 'Remove everything HQ owns'
+                                                        : 'Connect HQ first'}>
             Reset HQ
           </button>
         </div>

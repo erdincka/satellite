@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 import aiclient
 import assets
+import clientsetup
 import dfabric
 import iceberger
 import jobs
@@ -116,10 +117,41 @@ async def get_connections() -> dict:
 
 @app.put("/api/connections/{side}")
 async def update_connection(side: str, update: ConnectionUpdate) -> dict:
+    """Point a site at a cluster and prepare the client for it.
+
+    Preparing here is what lets the container be deployed with no cluster at all and
+    configured afterwards: the ticket and NFS mount are established now rather than
+    only at boot.
+    """
     _check_side(side)
-    CONNECTIONS.update(side, **update.model_dump())
+    settings_after = CONNECTIONS.update(side, **update.model_dump())
+
+    if settings_after.host:
+        profile = CONNECTIONS.profile(side)
+        report = await asyncio.to_thread(
+            clientsetup.prepare, settings_after.host, settings_after.username,
+            settings_after.password, profile.cluster_name,
+            "/mapr", settings_after.rest_port)
+        clientsetup.remember(side, report)
+
     await runner.for_side(side).refresh_status()
     return CONNECTIONS.snapshot()
+
+
+@app.post("/api/connections/{side}/prepare-client")
+async def prepare_client(side: str) -> dict:
+    """Re-run client setup — after a cluster comes back, or a truststore is supplied."""
+    _check_side(side)
+    settings_now = CONNECTIONS.settings(side)
+    if not settings_now.host:
+        raise HTTPException(400, "No cluster configured for this site")
+    profile = CONNECTIONS.profile(side)
+    report = await asyncio.to_thread(
+        clientsetup.prepare, settings_now.host, settings_now.username,
+        settings_now.password, profile.cluster_name, "/mapr", settings_now.rest_port)
+    clientsetup.remember(side, report)
+    await runner.for_side(side).refresh_status()
+    return report
 
 
 @app.post("/api/connections/{side}/test")

@@ -52,13 +52,18 @@ class Link:
         self._mirror_checked = 0.0
         self._task: asyncio.Task | None = None
 
-    def _mirror_cache_due(self) -> bool:
-        """Mirror state is a REST call; snapshot() runs every second, so cache it."""
-        if time.time() - self._mirror_checked < 5:
-            return False
+    async def refresh_mirror(self) -> None:
+        """Refresh cached mirror state off the event loop.
+
+        Deliberately not called from snapshot(): that runs on every state push, and a
+        REST call there blocks the whole interface whenever the cluster is slow or
+        unreachable — the interface stops responding rather than reporting the problem.
+        """
+        try:
+            self._mirror_cache = await asyncio.to_thread(self.mirror_state)
+        except Exception:
+            self._mirror_cache = {"known": False}
         self._mirror_checked = time.time()
-        self._mirror_cache = self.mirror_state()
-        return True
 
     # ------------------------------------------------------------------ cluster
 
@@ -169,8 +174,12 @@ class Link:
     # --------------------------------------------------------------------- loop
 
     async def loop(self) -> None:
+        ticks = 0
         while True:
             try:
+                ticks += 1
+                if ticks % 5 == 0:
+                    await self.refresh_mirror()
                 if self.next_change and time.time() >= self.next_change:
                     if self.open:
                         await asyncio.to_thread(self._set_replication, False)
@@ -203,7 +212,7 @@ class Link:
         return {
             "mode": self.mode,
             "open": self.open,
-            "mirror": self.mirror_state() if self._mirror_cache_due() else self._mirror_cache,
+            "mirror": self._mirror_cache,
             "interval": self.interval,
             "window": self.window,
             "secondsToChange": (round(self.next_change - time.time(), 1)

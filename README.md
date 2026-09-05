@@ -36,8 +36,8 @@ from its own; edge requests travel back the same way. Data crosses between the s
 only through Data Fabric replication — which is the mechanism the demo exists to show.
 
 At HQ an asset moves through four stages, each handing off over HQ's internal pipeline
-stream: **Ingested** announces that an asset exists, **Stored** uploads the actual bytes
-to HQ's bucket, **Catalogued** appends metadata and the AI narration to an Iceberg
+stream: **Ingested** announces that an asset exists, **Stored** writes the actual bytes
+to HQ's imagery volume, **Catalogued** appends metadata and the AI narration to an Iceberg
 table, and **Broadcast** publishes the description. HQ's internal chatter stays on a
 separate, unreplicated stream — it is HQ's business, and pushing it down the link would
 undercut the point.
@@ -89,9 +89,14 @@ A reachable Data Fabric cluster (7.x or 8.x) with:
 
 | Service | Port | Used for |
 |---|---|---|
-| `apiserver` | 8443 | Creating volumes, streams, topics; status |
+| `apiserver` | 8443 | Creating volumes, streams and topics; status |
 | `cldb` | 7222 | Streams, via the native client |
-| `s3server` | 9000 | Imagery and the Iceberg warehouse |
+| ZooKeeper | 5181 | Client configuration |
+| `nfs` | 2049 | Imagery, on Data Fabric volumes |
+| `s3server` | 9000 | The Iceberg warehouse |
+
+All five must be running and reachable from wherever you run the container. A default
+Data Fabric install provides them.
 
 S3 is used only for the Iceberg warehouse; credentials are minted per-user with
 `s3keys gentempkey` and refreshed as they expire, so there are no long-lived
@@ -142,11 +147,15 @@ and bucket, so the demo behaves identically whether you have one cluster or two.
 cp .env.example .env
 ```
 
-Set `DF_HOST` and credentials in `.env`, then:
+Then start it:
 
 ```bash
 docker compose up --build -d
 ```
+
+**You can leave `.env` empty.** The demo starts with nothing configured and you point it
+at a cluster from the interface, which is the quickest way to try it. Setting `HQ_HOST`,
+`EDGE_HOST` and `MAPR_TRUSTSTORE_B64` in `.env` just skips that step on every restart.
 
 Then open <http://localhost:8080> — or the Docker host's address if your Docker context
 points at a remote machine, since the port is published there and not on your localhost.
@@ -155,9 +164,12 @@ Set `PORT` in `.env` if 8080 is taken.
 Each site's cluster can also be set from the interface — click the host next to a site's
 name — so you can repoint the demo at a customer's cluster without restarting anything.
 
-On first run each site offers **Prepare**. Do the **edge first** (its volume and
-buckets), then **HQ** (its volume and buckets, the streams and topics, and the
-replication pair). Every step is reported and it is safe to re-run.
+Connect each site to a cluster — click **Connect**, or the host next to a site's name to
+change it later. Both sites may point at the same host.
+
+Then each site offers **Prepare**. Do the **edge first** (its volume and warehouse),
+then **HQ** (its volumes, the streams and topics, the replication pair, and the edge's
+mirror volume). Every step is reported as it completes and it is safe to re-run.
 
 Then press **Run** on each site. Assets begin flowing. On the edge, click **Request
 image** on any available tile; it arrives under Delivered, where you can open it and ask
@@ -208,9 +220,13 @@ overridable too, in case the defaults collide on a shared cluster.
 ## Built with
 
 A FastAPI server on Python 3.12 with a React, Vite and Tailwind front end, talking over
-a WebSocket. `mapr-streams-python` for the replicated streams, `boto3` for object
-storage, PyIceberg for the catalogue, and the OpenAI client for the vision model. The
-image is built on `maprtech/pacc`.
+a WebSocket. `mapr-streams-python` for the replicated streams, `boto3` for the Iceberg
+warehouse on S3, PyIceberg for the catalogue, and the OpenAI client for the vision model.
+
+The image is Rocky Linux 9 with the Data Fabric client installed from the package
+repository. `maprtech/pacc` would be the obvious base and does not work: its newest tag
+carries client 8.0, which cannot complete the secure CLDB handshake against an 8.1
+cluster, and installing 8.1 over the top leaves a broken native library state.
 
 ## Status
 
@@ -220,13 +236,47 @@ broadcast → replicate → request → deliver.
 Known limitations:
 
 - The container is `linux/amd64` only, because the Data Fabric client is.
-- Building the image yourself needs credentials for HPE's package repository, or a
-  reachable mirror via the `MAPR_REPO` build argument. The `maprtech/pacc` base already
-  ships a working client, so most builds need neither.
+- Building the image needs credentials for HPE's package repository, or a reachable
+  mirror via the `MAPR_REPO` / `MAPR_MEP_REPO` build arguments. Match the client version
+  to your cluster: a client older than the cluster cannot authenticate to it.
 - One container configures one Data Fabric client, so a two-cluster split relies on the
   trust relationship between them.
 - The cluster's `ssl_truststore` must be supplied; it cannot be derived.
 - With one cluster the two-site split is real in every respect except geography.
+
+## If something is not working
+
+The interface is designed to tell you: each site shows a pill per subsystem, and hovering
+one gives the reason. Common cases:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `cluster` red, "no cluster configured" | Nothing connected yet | **Connect** on either site |
+| `rest` red, "Name or service not known" | Hostname wrong or DNS cannot resolve it | Check `HQ_HOST`; the container must resolve it |
+| `client setup` red, "truststore: missing" | No `ssl_truststore` | Copy it from a cluster node; see above |
+| `client setup` red, "ticket: ..." | Credentials wrong, or client version older than the cluster | Check the user, and match `MAPR_REPO` to your cluster version |
+| `client setup` red, "nfs mount: ..." | Missing `CAP_SYS_ADMIN`, or NFS unreachable | Add the capability; check port 2049 |
+| `streams` red after Prepare | Ticket missing — streams authenticate with it | Fix `client setup` first |
+| Imagery never arrives at the edge | Mirror has not run | **Mirror now**, or set the link to On |
+| Everything red, container restarting | Should not happen | The container is built not to exit on cluster problems; please open an issue |
+
+The container starts and stays up whether or not a cluster is reachable, so you can
+always open the interface to see what it thinks is wrong. Logs:
+
+```bash
+docker compose logs -f satellite
+```
+
+## Repeating this demo
+
+It is designed to be run repeatedly against the same cluster:
+
+- **Prepare** is idempotent — re-running it reports each object as existing and changes
+  nothing.
+- **Reset** removes only what that site owns and leaves the rest of the cluster alone.
+  Reset the edge and prepare HQ again and the edge is rebuilt, mirror included.
+- Object names are configurable, so several people can run it against one shared cluster
+  by setting `APP_NAME` differently.
 
 ## Contributing
 

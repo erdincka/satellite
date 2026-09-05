@@ -1,116 +1,102 @@
 #!/usr/bin/env bash
 #
-# Configure the Data Fabric client for whichever cluster HQ points at, obtain a ticket,
-# then serve the app.
+# Start the demo.
 #
-# Everything here is client-side: configure.sh writes this container's own
-# mapr-clusters.conf and maprlogin fetches a ticket for this container. Nothing on the
-# cluster is changed.
+# Deliberately hard to kill: the interface must come up even with no cluster configured,
+# an unreachable cluster, or a missing truststore, because the operator configures the
+# cluster *in the interface* and cannot do that if the container is crash-looping. Every
+# cluster-dependent step is best-effort here and re-runnable at runtime from
+# backend/clientsetup.py, which is what handles a cluster entered later.
 #
-# Only one client configuration is possible per container, so when HQ and the edge are
-# on different clusters this configures HQ's and relies on the trust relationship
-# between them. With both sites on one cluster — the common case — it is simply that
-# cluster.
+# Nothing below uses `set -e`. An earlier version did, and a single failed curl during
+# cluster-name discovery killed the container before it printed anything — a silent
+# restart loop with no diagnostic, which is the worst way for a demo to fail.
 
-set -euo pipefail
+set -uo pipefail
 
 HQ_HOST="${HQ_HOST:-}"
 HQ_USER="${HQ_USER:-mapr}"
 HQ_PASSWORD="${HQ_PASSWORD:-mapr}"
-CLDB_PORT="${HQ_CLDB_PORT:-7222}"
-ZK_PORT="${HQ_ZK_PORT:-5181}"
+EDGE_HOST="${EDGE_HOST:-}"
 
-if [[ -n "$HQ_HOST" ]]; then
-  # Ask the cluster its own name rather than guessing: configure.sh otherwise writes
-  # "my.cluster.com", and the name is what stream replica paths are qualified with.
-  CLUSTER_NAME="${HQ_CLUSTER_NAME:-$(
-    curl -sk -m 15 -u "${HQ_USER}:${HQ_PASSWORD}" \
-      "https://${HQ_HOST}:${HQ_REST_PORT:-8443}/rest/dashboard/info" 2>/dev/null \
-      | sed -n 's/.*"cluster":{"name":"\([^"]*\)".*/\1/p'
-  )}"
-  CLUSTER_NAME="${CLUSTER_NAME:-df.cluster}"
-
-  echo "Configuring Data Fabric client for ${HQ_HOST} (cluster ${CLUSTER_NAME})..."
-  /opt/mapr/server/configure.sh -N "${CLUSTER_NAME}" \
-      -c -C "${HQ_HOST}:${CLDB_PORT}" -Z "${HQ_HOST}:${ZK_PORT}" -secure \
-      >/tmp/configure.log 2>&1 || {
-    echo "configure.sh failed; see /tmp/configure.log" >&2
-    tail -20 /tmp/configure.log >&2
-  }
-
-  # A secure cluster requires its own truststore, and it cannot be derived from the
-  # server certificate — the CLDB handshake rejects one built that way. Copy
-  # /opt/mapr/conf/ssl_truststore from any cluster node and mount it here.
-  # MAPR_TRUSTSTORE_B64 is the portable way in: a bind mount refers to a path on the
-  # Docker *host*, which is not where the file lives when the Docker context is remote.
-  if [[ ! -s /opt/mapr/conf/ssl_truststore && -n "${MAPR_TRUSTSTORE_B64:-}" ]]; then
-    echo "${MAPR_TRUSTSTORE_B64}" | base64 -d > /opt/mapr/conf/ssl_truststore \
-      && echo "Installed truststore from MAPR_TRUSTSTORE_B64"
-  fi
-  if [[ ! -s /opt/mapr/conf/ssl_truststore ]]; then
-    echo "ERROR: /opt/mapr/conf/ssl_truststore is missing." >&2
-    echo "       A secure cluster will not authenticate without it. Copy it from" >&2
-    echo "       /opt/mapr/conf/ssl_truststore on any cluster node, then either:" >&2
-    echo "         mount it   -v /path/to/ssl_truststore:/opt/mapr/conf/ssl_truststore:ro" >&2
-    echo "         or pass it MAPR_TRUSTSTORE_B64=\$(base64 -w0 ssl_truststore)" >&2
-  fi
-
-  # The ticket is what the native streams client authenticates with.
-  if echo "${HQ_PASSWORD}" | /opt/mapr/bin/maprlogin password -user "${HQ_USER}" \
-       >/tmp/maprlogin.log 2>&1; then
-    echo "Ticket: $(/opt/mapr/bin/maprlogin print 2>/dev/null | sed -n 2p)"
+# The truststore can arrive as an environment variable, which works whether the Docker
+# context is local or a remote host, or as a bind mount.
+if [[ ! -s /opt/mapr/conf/ssl_truststore && -n "${MAPR_TRUSTSTORE_B64:-}" ]]; then
+  if echo "${MAPR_TRUSTSTORE_B64}" | base64 -d > /opt/mapr/conf/ssl_truststore 2>/dev/null; then
+    echo "Installed the cluster truststore from MAPR_TRUSTSTORE_B64"
   else
-    echo "maprlogin failed — streams will not work until it succeeds:" >&2
-    tail -5 /tmp/maprlogin.log >&2
+    echo "WARNING: MAPR_TRUSTSTORE_B64 is not valid base64; ignoring it." >&2
+    rm -f /opt/mapr/conf/ssl_truststore
   fi
-else
-  # Not fatal: the interface still starts so the operator can enter a cluster there.
-  echo "HQ_HOST is not set; connect a cluster from the interface." >&2
 fi
+
+if [[ -z "$HQ_HOST" ]]; then
+  echo "No cluster configured. Starting the interface so you can set one up there."
+else
+  echo "Preparing the Data Fabric client for ${HQ_HOST}..."
+
+  # Ask the cluster its own name; configure.sh otherwise writes "my.cluster.com", and
+  # the name is what stream replica paths are qualified with. Best-effort: if the
+  # cluster is unreachable this falls back and the interface still starts.
+  CLUSTER_NAME="${HQ_CLUSTER_NAME:-}"
+  if [[ -z "$CLUSTER_NAME" ]]; then
+    CLUSTER_NAME=$(curl -sk -m 15 -u "${HQ_USER}:${HQ_PASSWORD}" \
+      "https://${HQ_HOST}:${HQ_REST_PORT:-8443}/rest/dashboard/info" 2>/dev/null \
+      | sed -n 's/.*"cluster":{"name":"\([^"]*\)".*/\1/p') || true
+  fi
+
+  if [[ -z "$CLUSTER_NAME" ]]; then
+    echo "WARNING: could not reach ${HQ_HOST}:${HQ_REST_PORT:-8443} to read the cluster" >&2
+    echo "         name. The interface will start; fix the connection there." >&2
+  else
+    # Pin the address: a slow container resolver costs seconds on every cluster call,
+    # and pinning here keeps hostnames matching the cluster's TLS certificate.
+    for host in "$HQ_HOST" "$EDGE_HOST"; do
+      [[ -n "$host" ]] || continue
+      grep -q " ${host}\$" /etc/hosts && continue
+      ip=$(getent hosts "$host" | awk '{print $1; exit}') || true
+      [[ -n "${ip:-}" ]] && echo "${ip} ${host}" >> /etc/hosts && echo "Pinned ${host} to ${ip}"
+    done
+
+    /opt/mapr/server/configure.sh -N "${CLUSTER_NAME}" -c \
+        -C "${HQ_HOST}:${HQ_CLDB_PORT:-7222}" -Z "${HQ_HOST}:${HQ_ZK_PORT:-5181}" -secure \
+        >/tmp/configure.log 2>&1 \
+      && echo "Client configured for cluster ${CLUSTER_NAME}" \
+      || echo "WARNING: configure.sh failed; see /tmp/configure.log" >&2
+
+    if [[ -s /opt/mapr/conf/ssl_truststore ]]; then
+      if echo "${HQ_PASSWORD}" | /opt/mapr/bin/maprlogin password -user "${HQ_USER}" \
+           >/tmp/maprlogin.log 2>&1; then
+        echo "Ticket obtained for ${HQ_USER}"
+      else
+        echo "WARNING: maprlogin failed — streams will not work until it succeeds:" >&2
+        tail -2 /tmp/maprlogin.log >&2
+      fi
+    else
+      echo "WARNING: no /opt/mapr/conf/ssl_truststore. A secure cluster cannot" >&2
+      echo "         authenticate without it — set MAPR_TRUSTSTORE_B64 or bind-mount it." >&2
+    fi
+
+    # Imagery lives on Data Fabric volumes, reached over NFS. Needs CAP_SYS_ADMIN.
+    mkdir -p /mapr
+    if mountpoint -q /mapr; then
+      echo "/mapr already mounted"
+    elif mount -t nfs -o nolock,vers=3,soft,timeo=50,retrans=2 \
+           "${HQ_HOST}:/mapr" /mapr 2>/tmp/mount.err; then
+      echo "Mounted ${HQ_HOST}:/mapr at /mapr"
+    else
+      echo "WARNING: could not mount ${HQ_HOST}:/mapr — $(cat /tmp/mount.err)" >&2
+      echo "         Imagery needs this. Run with --cap-add SYS_ADMIN and make sure the" >&2
+      echo "         cluster's NFS service is reachable on 2049." >&2
+    fi
+  fi
+fi
+
+export MAPR_MOUNT_HQ="${MAPR_MOUNT_HQ:-/mapr}"
+export MAPR_MOUNT_EDGE="${MAPR_MOUNT_EDGE:-/mapr}"
 
 # Run from inside backend/ so its modules import each other by plain name, which keeps
 # them equally runnable outside the container during development.
-# Mount each cluster's NFS export so imagery can live on Data Fabric volumes and cross
-# between the sites by volume mirroring. This is why the container needs CAP_SYS_ADMIN:
-# mounting is a privileged operation. The MapR FUSE client would avoid NFS but does not
-# work in a container — it creates the mount and exits immediately, leaving every access
-# failing with "Transport endpoint is not connected".
-mount_cluster() {
-  local host="$1" target="$2" label="$3"
-  [[ -n "$host" ]] || return 0
-  mkdir -p "$target"
-  if mountpoint -q "$target"; then return 0; fi
-  if mount -t nfs -o nolock,vers=3,hard,timeo=100,retrans=2 "${host}:/mapr" "$target" 2>/tmp/mount.err; then
-    echo "Mounted ${label} (${host}:/mapr) at ${target}"
-  else
-    echo "WARNING: could not mount ${label} at ${target}: $(cat /tmp/mount.err)" >&2
-    echo "         imagery needs this mount; run with --cap-add SYS_ADMIN and make sure" >&2
-    echo "         the cluster's NFS service is reachable on port 2049." >&2
-  fi
-}
-
-mount_cluster "${HQ_HOST:-}" /mapr "HQ"
-export MAPR_MOUNT_HQ=/mapr
-if [[ -n "${EDGE_HOST:-}" && "${EDGE_HOST}" != "${HQ_HOST:-}" ]]; then
-  mount_cluster "${EDGE_HOST}" /mapr-edge "edge"
-  export MAPR_MOUNT_EDGE=/mapr-edge
-else
-  export MAPR_MOUNT_EDGE=/mapr
-fi
-
-# Pin each cluster's address in /etc/hosts. A container's default resolver can take
-# seconds to answer, and every cluster call pays it — measured at 3.07s per REST call
-# against a cluster that responds in 0.30s once connected.
-for host in "${HQ_HOST:-}" "${EDGE_HOST:-}"; do
-  [[ -n "$host" ]] || continue
-  grep -q " ${host}\$" /etc/hosts && continue
-  ip=$(getent hosts "$host" | awk '{print $1; exit}')
-  if [[ -n "$ip" ]]; then
-    echo "${ip} ${host}" >> /etc/hosts
-    echo "Pinned ${host} to ${ip}"
-  fi
-done
-
 cd /app/backend
 exec python -m uvicorn main:app \
     --host "${BIND_HOST:-0.0.0.0}" --port 8080 \

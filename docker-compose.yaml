@@ -18,12 +18,13 @@ services:
     restart: unless-stopped
     platform: linux/amd64   # the Data Fabric client is x86-only
     env_file:
-      - .env
+      # Optional: the demo starts with no configuration and is set up in the interface.
+      - path: .env
+        required: false
     # Imagery lives on Data Fabric volumes reached over NFS, and mounting requires
     # CAP_SYS_ADMIN. The cluster's NFS service must be reachable on port 2049.
     cap_add:
       - SYS_ADMIN
-    devices: []
     security_opt:
       - apparmor:unconfined
     ports:
@@ -33,11 +34,10 @@ services:
     volumes:
       # Cluster connections entered in the interface survive a restart.
       - satellite-state:/app/state
-      # The cluster's truststore, copied from /opt/mapr/conf/ssl_truststore on any
-      # cluster node. A secure cluster will not authenticate without it. If your Docker
-      # context is a remote host this path is resolved there, so pass the file as
-      # MAPR_TRUSTSTORE_B64 in .env instead.
-      - ./secrets/ssl_truststore:/opt/mapr/conf/ssl_truststore:ro
+      # The cluster's truststore arrives via MAPR_TRUSTSTORE_B64 in .env, which works
+      # whether the Docker context is local or remote. If yours is local you can
+      # bind-mount the file instead — uncomment this and drop the variable:
+      # - ./secrets/ssl_truststore:/opt/mapr/conf/ssl_truststore:ro
     # A container's default resolver can be slow to answer, and every cluster call pays
     # for it. Uncomment and point at a resolver that answers promptly if status feels
     # sluggish. The app also pins each cluster's address after the first lookup.

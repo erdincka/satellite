@@ -76,7 +76,7 @@ class SiteRunner:
         waiting on the cluster, which is what makes the UI feel immediate.
         """
         if not CONNECTIONS.configured(self.side):
-            self.status = {"connection": (False, "no cluster configured")}
+            self.status = {"cluster": (False, "no cluster configured — set one below")}
             self.ready = False
             return
 
@@ -97,6 +97,11 @@ class SiteRunner:
         ok, detail, pending = replication
         if ok is not None:
             checks["replication"] = (ok, detail)
+
+        # Whether this container can actually talk to the cluster as a client: the
+        # ticket and the NFS mount, without which streams and imagery cannot work.
+        import clientsetup
+        checks["client setup"] = clientsetup.summary(self.side)
         self._pending_bytes = pending
         self.status = checks
         self.ready = ready

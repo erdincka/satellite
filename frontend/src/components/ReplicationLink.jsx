@@ -12,7 +12,7 @@ import { api } from '../api'
  * volume is a mirror of HQ's outbound volume, pulled when the edge decides to spend the
  * link.
  */
-export default function ReplicationLink({ hq, edge, sameCluster, link, notify }) {
+export default function ReplicationLink({ hq, edge, sameCluster, link, notify, connected }) {
   const replication = hq.status?.replication
   const healthy = replication?.ok
   const known = replication !== undefined
@@ -50,7 +50,8 @@ export default function ReplicationLink({ hq, edge, sameCluster, link, notify })
                       : 'No replica yet'}
       </div>
 
-      <LinkControl link={link} onMode={setMode} onSync={syncNow} queued={queuedOut} />
+      <LinkControl link={link} onMode={setMode} onSync={syncNow} queued={queuedOut}
+                   enabled={connected} />
 
       {sameCluster && (
         <div className="rounded border border-amber-700/40 bg-amber-950/30 px-2 py-1
@@ -73,7 +74,7 @@ export default function ReplicationLink({ hq, edge, sameCluster, link, notify })
         <Lane label="Imagery" sub={humanBytes(bytes)} direction="right"
               value={delivered} active={(link?.mirror?.running || delivered > 0) && !down}
               tone="orange" />
-        <MirrorState mirror={link?.mirror} onMirror={mirrorNow} down={down} />
+        <MirrorState mirror={link?.mirror} onMirror={mirrorNow} down={down || !connected} />
       </div>
 
       <div className="w-full rounded border border-slate-800 bg-slate-900/50 p-2">
@@ -93,8 +94,16 @@ export default function ReplicationLink({ hq, edge, sameCluster, link, notify })
  * messages pile up and reopening really does drain them — which is the behaviour worth
  * demonstrating to anyone designing for intermittent connectivity.
  */
-function LinkControl({ link, onMode, onSync, queued }) {
+function LinkControl({ link, onMode, onSync, queued, enabled }) {
   if (!link) return null
+  if (!enabled) {
+    return (
+      <p className="w-full rounded border border-slate-800 bg-slate-900/50 p-2 text-center
+                    text-[10px] leading-snug text-slate-600">
+        Connect both sites to cut, schedule or restore the link.
+      </p>
+    )
+  }
   const modes = [
     ['connected', 'On'],
     ['scheduled', 'Scheduled'],
