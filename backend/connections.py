@@ -33,11 +33,17 @@ class ConnectionSettings:
     password: str = "mapr"
     rest_port: int = 8443
     s3_port: int = 9000
+    # Used only to copy the truststore from /opt/mapr/conf, which is the documented way
+    # a secure client obtains it. Defaults to the cluster credentials.
+    ssh_user: str = ""
+    ssh_password: str = ""
+    ssh_port: int = 22
 
     def redacted(self) -> dict:
         """Never send the password to the browser; report only whether one is set."""
         data = asdict(self)
         data["password"] = "********" if self.password else ""
+        data["ssh_password"] = "********" if self.ssh_password else ""
         return data
 
 
@@ -49,6 +55,9 @@ def _from_env(side: str) -> ConnectionSettings:
         password=os.environ.get(f"{side}_PASSWORD", "mapr"),
         rest_port=int(os.environ.get(f"{side}_REST_PORT", "8443")),
         s3_port=int(os.environ.get(f"{side}_S3_PORT", "9000")),
+        ssh_user=os.environ.get(f"{side}_SSH_USER", ""),
+        ssh_password=os.environ.get(f"{side}_SSH_PASSWORD", ""),
+        ssh_port=int(os.environ.get(f"{side}_SSH_PORT", "22")),
     )
 
 
@@ -122,12 +131,12 @@ class Connections:
         side = side.upper()
         with self._lock:
             current = self._settings[side]
-            password = changes.get("password")
-            if password in (None, "", "********"):
-                changes["password"] = current.password
+            for field in ("password", "ssh_password"):
+                if changes.get(field) in (None, "", "********"):
+                    changes[field] = getattr(current, field)
             merged = {**asdict(current), **{k: v for k, v in changes.items() if v is not None}}
-            merged["rest_port"] = int(merged["rest_port"])
-            merged["s3_port"] = int(merged["s3_port"])
+            for field in ("rest_port", "s3_port", "ssh_port"):
+                merged[field] = int(merged[field])
             self._settings[side] = ConnectionSettings(**merged)
             self._rebuild()
             self._save()

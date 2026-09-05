@@ -56,6 +56,11 @@ async def lifespan(app: FastAPI):
 
     for site_runner in runner.RUNNERS.values():
         site_runner.start()
+
+    # Prepare any cluster already configured in the environment. In the background and
+    # never awaited: an unreachable cluster must not delay the interface, which is where
+    # the operator goes to fix it.
+    asyncio.create_task(_prepare_configured_sites(), name="client-setup")
     link_module.LINK.start()
     pusher = asyncio.create_task(runner.HUB.push_state_forever(), name="state-push")
 
@@ -66,6 +71,35 @@ async def lifespan(app: FastAPI):
     for site_runner in runner.RUNNERS.values():
         await site_runner.stop()
     await asyncio.to_thread(streams.close_all)
+
+
+async def _prepare_configured_sites() -> None:
+    for side in ("HQ", "EDGE"):
+        if CONNECTIONS.configured(side):
+            try:
+                await _prepare_side(side)
+            except Exception:
+                logger.exception("Client setup for %s failed", side)
+
+
+async def _prepare_side(side: str) -> dict:
+    """Fetch the truststore, configure the client, get a ticket, mount the cluster."""
+    site_settings = CONNECTIONS.settings(side)
+    profile = CONNECTIONS.profile(side)
+    cluster_name = await asyncio.to_thread(profile.resolve_cluster_name)
+    report = await asyncio.to_thread(
+        clientsetup.prepare,
+        site_settings.host, site_settings.username, site_settings.password,
+        cluster_name, "/mapr", site_settings.rest_port,
+        7222, 5181,
+        site_settings.ssh_user or None, site_settings.ssh_password or None,
+        site_settings.ssh_port,
+    )
+    clientsetup.remember(side, report)
+    logger.info("Client setup for %s: %s", side,
+                "ready" if report.get("ready") else "incomplete")
+    await runner.for_side(side).refresh_status()
+    return report
 
 
 app = FastAPI(title="Satellite", lifespan=lifespan)
@@ -108,6 +142,9 @@ class ConnectionUpdate(BaseModel):
     password: str | None = None
     rest_port: int | None = None
     s3_port: int | None = None
+    ssh_user: str | None = None
+    ssh_password: str | None = None
+    ssh_port: int | None = None
 
 
 @app.get("/api/connections")
@@ -127,13 +164,7 @@ async def update_connection(side: str, update: ConnectionUpdate) -> dict:
     settings_after = CONNECTIONS.update(side, **update.model_dump())
 
     if settings_after.host:
-        profile = CONNECTIONS.profile(side)
-        cluster_name = await asyncio.to_thread(profile.resolve_cluster_name)
-        report = await asyncio.to_thread(
-            clientsetup.prepare, settings_after.host, settings_after.username,
-            settings_after.password, cluster_name,
-            "/mapr", settings_after.rest_port)
-        clientsetup.remember(side, report)
+        await _prepare_side(side)
 
     await runner.for_side(side).refresh_status()
     return CONNECTIONS.snapshot()
@@ -143,17 +174,9 @@ async def update_connection(side: str, update: ConnectionUpdate) -> dict:
 async def prepare_client(side: str) -> dict:
     """Re-run client setup — after a cluster comes back, or a truststore is supplied."""
     _check_side(side)
-    settings_now = CONNECTIONS.settings(side)
-    if not settings_now.host:
+    if not CONNECTIONS.settings(side).host:
         raise HTTPException(400, "No cluster configured for this site")
-    profile = CONNECTIONS.profile(side)
-    cluster_name = await asyncio.to_thread(profile.resolve_cluster_name)
-    report = await asyncio.to_thread(
-        clientsetup.prepare, settings_now.host, settings_now.username,
-        settings_now.password, cluster_name, "/mapr", settings_now.rest_port)
-    clientsetup.remember(side, report)
-    await runner.for_side(side).refresh_status()
-    return report
+    return await _prepare_side(side)
 
 
 @app.post("/api/connections/{side}/test")

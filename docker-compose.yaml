@@ -34,9 +34,9 @@ services:
     volumes:
       # Cluster connections entered in the interface survive a restart.
       - satellite-state:/app/state
-      # The cluster's truststore arrives via MAPR_TRUSTSTORE_B64 in .env, which works
-      # whether the Docker context is local or remote. If yours is local you can
-      # bind-mount the file instead — uncomment this and drop the variable:
+      # The cluster's truststore is fetched over SCP from /opt/mapr/conf on the HQ
+      # host once a cluster is configured. If SSH is unavailable, supply it yourself by
+      # uncommenting this (the fetch is then skipped):
       # - ./secrets/ssl_truststore:/opt/mapr/conf/ssl_truststore:ro
     # A container's default resolver can be slow to answer, and every cluster call pays
     # for it. Uncomment and point at a resolver that answers promptly if status feels

@@ -7,7 +7,7 @@ That sounds like a bandwidth problem, and most designs treat it as one — compr
 sync less often, buy a bigger pipe. It isn't. It's a **decision** problem. The team needs
 to know what *exists* so they can choose the few things worth spending the link on.
 
-**Satellite** is a working model of that pattern, built on HPE Data Fabric. An HQ site
+**Satellite Demo** is a working model of that pattern, built on HPE Data Fabric. An HQ site
 ingests imagery, catalogues it, and continuously broadcasts lightweight *descriptions* to
 every edge site. The edge browses those descriptions and requests the handful it actually
 wants. Only then does the imagery itself move. A vision model at the edge can describe
