@@ -19,6 +19,10 @@ intermittent, or both.
 
 ![Headquarters on the left, the edge site on the right, and the live Data Fabric link between them](../app-image.png)
 
+**[Watch it run (99 seconds)](satellite-demo.mp4)** — an asset requested at the edge, the
+mirror pulled deliberately, then the link cut and restored while the backlog builds and
+drains.
+
 ## The architecture in one idea
 
 **Separate the metadata plane from the data plane, and give them different transports and
@@ -94,6 +98,11 @@ Cutting the link left HQ publishing normally while the edge stayed frozen and th
 grew to 21 messages; restoring it drained to zero within seconds. Imagery behaved
 consistently: a requested asset simply sat staged in HQ's outbound volume until the edge
 chose to mirror it. Nothing about that is simulated, and none of it is application code.
+
+These are ordinary Data Fabric objects, visible and managed like any other — the edge's
+imagery volume is a mirror, and the platform knows it:
+
+![The demo's five volumes in the Data Fabric control system, with satellite-edge-assets typed as a mirror](mcs-volumes.png)
 
 ## What still needs designing
 

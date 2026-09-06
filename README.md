@@ -112,25 +112,23 @@ and needs privileges to do it. It never calls `maprcli` — provisioning is REST
 | `--cap-add SYS_ADMIN` | Mounting NFS is a privileged operation |
 | Cluster NFS reachable on **2049** | Imagery is read and written over `/mapr` |
 | Cluster CLDB on **7222**, apiserver **8443**, S3 **9000** | Streams, provisioning, warehouse |
-| `ssl_truststore` from the cluster | A secure cluster will not authenticate without it |
+| SSH to the HQ host (22) | The truststore is fetched from `/opt/mapr/conf` |
 | `linux/amd64` | The Data Fabric client is x86-only |
 
-The truststore is the one file you must supply. Copy `/opt/mapr/conf/ssl_truststore`
-from any cluster node, then either bind-mount it:
+**You do not need to stage anything.** A secure cluster requires its truststore on the
+client, and the demo fetches it for you: once a cluster is configured — from `.env` or in
+the interface — it copies `ssl_truststore` from `/opt/mapr/conf` on the HQ host over SCP,
+which is the documented way a client obtains it. SSH credentials default to the cluster
+credentials; override with `HQ_SSH_USER` / `HQ_SSH_PASSWORD` if they differ.
+
+If SSH is unavailable, supply the file yourself and the fetch is skipped:
 
 ```bash
 -v /path/to/ssl_truststore:/opt/mapr/conf/ssl_truststore:ro
 ```
 
-or, if your Docker context points at a **remote host** (where a bind mount would resolve
-on that host rather than yours), pass it in `.env`:
-
-```bash
-MAPR_TRUSTSTORE_B64=$(base64 -w0 ssl_truststore)
-```
-
-It cannot be generated from the cluster's server certificate — the CLDB handshake
-rejects one built that way.
+It cannot be generated from the cluster's server certificate — the CLDB handshake rejects
+one built that way.
 
 > The MapR FUSE client would avoid NFS, and does not work in a container: it creates the
 > mount, the process exits immediately, and every access then fails with "Transport
@@ -154,8 +152,10 @@ docker compose up --build -d
 ```
 
 **You can leave `.env` empty.** The demo starts with nothing configured and you point it
-at a cluster from the interface, which is the quickest way to try it. Setting `HQ_HOST`,
-`EDGE_HOST` and `MAPR_TRUSTSTORE_B64` in `.env` just skips that step on every restart.
+at a cluster from the interface, which is the quickest way to try it. Setting `HQ_HOST`
+and `EDGE_HOST` in `.env` just skips that step on every restart. Nothing talks to a
+cluster until one is configured, and an unreachable one never stops the interface coming
+up — that is where you go to fix it.
 
 Then open <http://localhost:8080> — or the Docker host's address if your Docker context
 points at a remote machine, since the port is published there and not on your localhost.
@@ -241,7 +241,8 @@ Known limitations:
   to your cluster: a client older than the cluster cannot authenticate to it.
 - One container configures one Data Fabric client, so a two-cluster split relies on the
   trust relationship between them.
-- The cluster's `ssl_truststore` must be supplied; it cannot be derived.
+- The truststore is fetched over SSH from the HQ host. Where SSH is closed, bind-mount
+  it instead; it cannot be derived from the server certificate.
 - With one cluster the two-site split is real in every respect except geography.
 
 ## If something is not working
@@ -253,7 +254,7 @@ one gives the reason. Common cases:
 |---|---|---|
 | `cluster` red, "no cluster configured" | Nothing connected yet | **Connect** on either site |
 | `rest` red, "Name or service not known" | Hostname wrong or DNS cannot resolve it | Check `HQ_HOST`; the container must resolve it |
-| `client setup` red, "truststore: missing" | No `ssl_truststore` | Copy it from a cluster node; see above |
+| `client setup` red, "truststore: could not copy…" | SSH to the HQ host failed | Check `HQ_SSH_USER` / `HQ_SSH_PASSWORD`, or bind-mount the file |
 | `client setup` red, "ticket: ..." | Credentials wrong, or client version older than the cluster | Check the user, and match `MAPR_REPO` to your cluster version |
 | `client setup` red, "nfs mount: ..." | Missing `CAP_SYS_ADMIN`, or NFS unreachable | Add the capability; check port 2049 |
 | `streams` red after Prepare | Ticket missing — streams authenticate with it | Fix `client setup` first |
@@ -277,6 +278,12 @@ It is designed to be run repeatedly against the same cluster:
   Reset the edge and prepare HQ again and the edge is rebuilt, mirror included.
 - Object names are configurable, so several people can run it against one shared cluster
   by setting `APP_NAME` differently.
+
+## See it run
+
+[A 99-second walkthrough](docs/satellite-demo.mp4): an asset requested at the edge, the
+volume mirror pulled deliberately, then the link cut and restored while the backlog
+builds on the cluster and drains again.
 
 ## Further reading
 
