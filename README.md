@@ -8,7 +8,7 @@ descriptions and requests the handful it actually wants; only then does the imag
 itself get copied. A vision model can then describe what arrived, so an operator gets an
 answer without opening every file.
 
-It is built on [HPE Ezmeral Data Fabric](https://www.hpe.com/us/en/hpe-ezmeral-data-fabric.html)
+It is built on [HPE Data Fabric](https://www.hpe.com/us/en/products/software/data-fabric-software.html)
 stream replication, object storage and Iceberg, and it is a useful reference for anyone
 designing for intermittent connectivity — disaster response, maritime, remote industrial
 sites — where the real design problem is deciding what crosses the link.
@@ -281,7 +281,7 @@ It is designed to be run repeatedly against the same cluster:
 
 ## See it run
 
-[A 99-second walkthrough](docs/satellite-demo.mp4): an asset requested at the edge, the
+[A 97-second walkthrough](docs/satellite-demo.mp4): an asset requested at the edge, the
 volume mirror pulled deliberately, then the link cut and restored while the backlog
 builds on the cluster and drains again.
 

@@ -19,7 +19,7 @@ intermittent, or both.
 
 ![Headquarters on the left, the edge site on the right, and the live Data Fabric link between them](../app-image.png)
 
-**[Watch it run (99 seconds)](satellite-demo.mp4)** — an asset requested at the edge, the
+**[Watch it run (97 seconds)](satellite-demo.mp4)** — an asset requested at the edge, the
 mirror pulled deliberately, then the link cut and restored while the backlog builds and
 drains.
 
@@ -195,7 +195,7 @@ what makes a fleet observable centrally rather than site by site. Note that moni
 components are not installed on client or edge nodes — an edge site reports through its
 own cluster, so the observability design follows the fabric topology.
 
-For genuinely small sites there is **HPE Ezmeral Data Fabric Edge**: a small-footprint
+For genuinely small sites there is **HPE Data Fabric Edge**: a small-footprint
 edition running on commodity hardware in three- to five-node configurations, with the
 full capability set — files, tables and streams, plus snapshots, mirroring, replication
 and compression. An edge site is a small fabric, not a cut-down client, which is why the
