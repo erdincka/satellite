@@ -1,5 +1,5 @@
 """
-Connection layer for an external HPE Ezmeral Data Fabric cluster.
+Connection layer for an external HPE Data Fabric cluster.
 
 Provisioning and object access go over the network, so neither needs `maprcli` nor a
 POSIX `/mapr` FUSE mount. Streams use the native client, which does need the MapR

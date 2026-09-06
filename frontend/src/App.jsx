@@ -112,7 +112,7 @@ function TopBar({ state, connected, notify, onReset, onConfigureModel }) {
       <div className="flex items-baseline gap-2">
         <span className="text-sm font-semibold tracking-tight text-slate-100">Satellite</span>
         <span className="hidden text-[11px] text-slate-500 sm:inline">
-          core to edge on HPE Ezmeral Data Fabric
+          core to edge on HPE Data Fabric
         </span>
       </div>
 
