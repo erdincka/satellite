@@ -1,5 +1,7 @@
 # Satellite — headquarters and a disconnected edge, sharing what matters
 
+> **Prerequisites** — requires [HPE Data Fabric](https://www.hpe.com/us/en/products/software/data-fabric-software.html).
+
 A field team on a satellite link cannot pull down everything headquarters has. They
 need to know what *exists*, and then choose the few things worth spending bandwidth on.
 **Satellite** is a working model of that pattern: an HQ site ingests imagery, catalogues
